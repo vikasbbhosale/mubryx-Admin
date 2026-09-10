@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
-  MOCK_TECHNICIANS, 
   TechnicianMock, 
   OnboardingStatus, 
   getStatusBadgeColor, 
@@ -20,15 +19,35 @@ import {
   ExternalLink,
   MessageSquare,
   BadgeCheck,
-  Ban
+  Ban,
+  Loader2
 } from 'lucide-react';
 
 export default function VerificationsPage() {
-  const [technicians, setTechnicians] = useState<TechnicianMock[]>(MOCK_TECHNICIANS);
+  const [technicians, setTechnicians] = useState<TechnicianMock[]>([]);
+  const [loading, setLoading] = useState(true);
   const [filterTab, setFilterTab] = useState<'PENDING' | 'APPROVED' | 'REJECTED' | 'SUSPENDED' | 'ALL'>('PENDING');
   const [search, setSearch] = useState('');
   const [reviewTech, setReviewTech] = useState<TechnicianMock | null>(null);
   const [reviewNotes, setReviewNotes] = useState('');
+
+  const fetchTechnicians = async () => {
+    try {
+      const res = await fetch('/api/technicians');
+      if (res.ok) {
+        const data = await res.json();
+        setTechnicians(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch technicians', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTechnicians();
+  }, []);
 
   // Filter technicians based on tab
   const filteredTechs = technicians.filter(t => {
@@ -47,24 +66,33 @@ export default function VerificationsPage() {
     return matchesTab && matchesSearch;
   });
 
-  const handleDecision = (newStatus: OnboardingStatus) => {
+  const handleDecision = async (newStatus: OnboardingStatus) => {
     if (!reviewTech) return;
-
-    setTechnicians(prev => prev.map(t => {
-      if (t.id === reviewTech.id) {
-        return {
-          ...t,
-          onboardingStatus: newStatus,
-          reviewNotes: reviewNotes || t.reviewNotes,
-          updatedAt: new Date().toISOString()
-        };
+    
+    try {
+      const res = await fetch(`/api/technicians/${reviewTech.id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus, reason: reviewNotes })
+      });
+      
+      if (res.ok) {
+        await fetchTechnicians();
+        setReviewTech(null);
+        setReviewNotes('');
       }
-      return t;
-    }));
-
-    setReviewTech(null);
-    setReviewNotes('');
+    } catch (error) {
+      console.error('Failed to update status', error);
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="flex h-[60vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 pb-12">

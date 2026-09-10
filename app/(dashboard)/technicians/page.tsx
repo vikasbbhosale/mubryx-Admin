@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
-  MOCK_TECHNICIANS, 
   TechnicianMock, 
   OnboardingStatus, 
   getStatusBadgeColor, 
@@ -26,15 +25,39 @@ import {
   Ban,
   UserCheck,
   FileCheck,
-  AlertCircle
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 
 export default function TechniciansPage() {
-  const [technicians, setTechnicians] = useState<TechnicianMock[]>(MOCK_TECHNICIANS);
+  const [technicians, setTechnicians] = useState<TechnicianMock[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [selectedTech, setSelectedTech] = useState<TechnicianMock | null>(null);
   const [actionNote, setActionNote] = useState('');
+
+  const fetchTechnicians = async () => {
+    try {
+      const res = await fetch('/api/technicians');
+      if (res.ok) {
+        const data = await res.json();
+        setTechnicians(data);
+        if (selectedTech) {
+          const updatedSelected = data.find((t: TechnicianMock) => t.id === selectedTech.id);
+          if (updatedSelected) setSelectedTech(updatedSelected);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch technicians', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTechnicians();
+  }, []);
 
   // Status counts for quick stats
   const countTotal = technicians.length;
@@ -57,30 +80,32 @@ export default function TechniciansPage() {
     return matchesSearch && matchesStatus;
   });
 
-  const handleUpdateStatus = (techId: string, newStatus: OnboardingStatus, notes?: string) => {
+  const handleUpdateStatus = async (techId: string, newStatus: OnboardingStatus, notes?: string) => {
     const noteToSave = notes || actionNote || undefined;
-    setTechnicians(prev => prev.map(t => {
-      if (t.id === techId) {
-        return {
-          ...t,
-          onboardingStatus: newStatus,
-          reviewNotes: noteToSave || t.reviewNotes,
-          updatedAt: new Date().toISOString()
-        };
+    
+    try {
+      const res = await fetch(`/api/technicians/${techId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus, reason: noteToSave })
+      });
+      
+      if (res.ok) {
+        await fetchTechnicians();
+        setActionNote('');
       }
-      return t;
-    }));
-
-    if (selectedTech && selectedTech.id === techId) {
-      setSelectedTech(prev => prev ? { 
-        ...prev, 
-        onboardingStatus: newStatus, 
-        reviewNotes: noteToSave || prev.reviewNotes,
-        updatedAt: new Date().toISOString()
-      } : null);
+    } catch (error) {
+      console.error('Error updating status', error);
     }
-    setActionNote('');
   };
+
+  if (loading) {
+    return (
+      <div className="flex h-[60vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 pb-12">

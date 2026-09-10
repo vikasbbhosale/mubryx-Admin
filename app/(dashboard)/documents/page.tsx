@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
-  MOCK_TECHNICIANS, 
   TechnicianMock, 
   TechnicianDocumentMock, 
   DocumentType, 
@@ -18,7 +17,8 @@ import {
   Eye, 
   Clock, 
   AlertCircle,
-  X
+  X,
+  Loader2
 } from 'lucide-react';
 
 interface DocumentRowItem {
@@ -29,12 +29,40 @@ interface DocumentRowItem {
 }
 
 export default function DocumentsPage() {
-  const [technicians, setTechnicians] = useState<TechnicianMock[]>(MOCK_TECHNICIANS);
+  const [technicians, setTechnicians] = useState<TechnicianMock[]>([]);
+  const [loading, setLoading] = useState(true);
   const [docTypeFilter, setDocTypeFilter] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [search, setSearch] = useState('');
   const [previewDoc, setPreviewDoc] = useState<DocumentRowItem | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
+
+  const fetchTechnicians = async () => {
+    try {
+      const res = await fetch('/api/technicians');
+      if (res.ok) {
+        const data = await res.json();
+        setTechnicians(data);
+        if (previewDoc) {
+          const updatedTech = data.find((t: TechnicianMock) => t.id === previewDoc.technicianId);
+          if (updatedTech) {
+            const updatedDoc = updatedTech.documents.find((d: TechnicianDocumentMock) => d.id === previewDoc.doc.id);
+            if (updatedDoc) {
+              setPreviewDoc({ ...previewDoc, doc: updatedDoc });
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch technicians', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTechnicians();
+  }, []);
 
   // Flat list of all documents with technician metadata
   const allDocuments: DocumentRowItem[] = technicians.flatMap(tech => 
@@ -59,32 +87,32 @@ export default function DocumentsPage() {
     return matchesDocType && matchesStatus && matchesSearch;
   });
 
-  const handleDocumentAction = (techId: string, docId: string, newStatus: 'VERIFIED' | 'REJECTED', reason?: string) => {
-    setTechnicians(prev => prev.map(t => {
-      if (t.id === techId) {
-        return {
-          ...t,
-          documents: t.documents.map(d => {
-            if (d.id === docId) {
-              return {
-                ...d,
-                status: newStatus,
-                rejectionReason: reason || d.rejectionReason,
-                updatedAt: new Date().toISOString()
-              };
-            }
-            return d;
-          })
-        };
+  const handleDocumentAction = async (techId: string, docId: string, newStatus: 'VERIFIED' | 'REJECTED', reason?: string) => {
+    try {
+      const res = await fetch(`/api/technicians/${techId}/documents/${docId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus, reason: reason || rejectionReason })
+      });
+      if (res.ok) {
+        await fetchTechnicians();
+        if (previewDoc && previewDoc.doc.id === docId) {
+          setPreviewDoc(null);
+          setRejectionReason('');
+        }
       }
-      return t;
-    }));
-
-    if (previewDoc && previewDoc.doc.id === docId) {
-      setPreviewDoc(null);
-      setRejectionReason('');
+    } catch (error) {
+      console.error('Failed to update document', error);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="flex h-[60vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 pb-12">

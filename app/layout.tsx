@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import DashboardLayout from "@/components/layouts/DashboardLayout";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,18 +13,21 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Mubryx Admin Dashboard",
-  description: "Admin panel for Mubryx Home Services Platform",
+  title: "Mubryx Admin",
+  description: "Administrator Portal for Mubryx",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">
-        <DashboardLayout>{children}</DashboardLayout>
+    <html lang="en" className="h-full">
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} h-full antialiased min-h-full flex flex-col`}
+      >
+        {children}
       </body>
     </html>
   );
