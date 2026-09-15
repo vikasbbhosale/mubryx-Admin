@@ -1,378 +1,453 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { 
-  TechnicianMock, 
-  OnboardingStatus, 
-  getStatusBadgeColor, 
-  formatDocType 
-} from '@/lib/mock-data';
-import { 
+  UserCheck, 
+  Search, 
   CheckCircle2, 
   XCircle, 
-  Clock, 
-  FileCheck2, 
-  ShieldCheck, 
   AlertTriangle, 
-  UserCheck,
-  Search,
-  ExternalLink,
-  MessageSquare,
-  BadgeCheck,
-  Ban,
-  Loader2
+  FileText, 
+  ExternalLink, 
+  ShieldCheck, 
+  Loader2, 
+  RefreshCw, 
+  ChevronRight,
+  Eye,
+  FileCheck2,
+  Clock,
+  ArrowUpRight
 } from 'lucide-react';
+import { StatusBadge } from '@/components/ui/StatusBadge';
+import { CaseDrawer } from '@/components/ui/CaseDrawer';
+import { DestructiveModal } from '@/components/ui/DestructiveModal';
+
+interface DocumentItem {
+  id: string;
+  type: string;
+  objectKey: string;
+  mimeType: string;
+  fileSize: number;
+  createdAt: string;
+  documentNumber?: string;
+  status?: string;
+  previewUrl?: string;
+}
+
+interface TechnicianReview {
+  id: string;
+  fullName: string | null;
+  contact?: string | null;
+  currentCity: string | null;
+  experienceYears?: number | null;
+  onboardingStatus: string;
+  createdAt: string;
+  user?: {
+    id: string;
+    phone: string;
+    name: string | null;
+  };
+  skills?: Array<{ id: string; name: string }>;
+  documents?: DocumentItem[];
+  bankDetails?: {
+    bankName: string;
+    accountNumber: string;
+    ifsc: string;
+    accountHolder: string;
+  } | null;
+}
 
 export default function VerificationsPage() {
-  const [technicians, setTechnicians] = useState<TechnicianMock[]>([]);
+  const [technicians, setTechnicians] = useState<TechnicianReview[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filterTab, setFilterTab] = useState<'PENDING' | 'APPROVED' | 'REJECTED' | 'SUSPENDED' | 'ALL'>('PENDING');
+  const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
-  const [reviewTech, setReviewTech] = useState<TechnicianMock | null>(null);
+  const [tab, setTab] = useState<'PENDING' | 'APPROVED' | 'REJECTED' | 'ALL'>('PENDING');
+  const [selectedTech, setSelectedTech] = useState<TechnicianReview | null>(null);
+  const [activeDocUrl, setActiveDocUrl] = useState<string | null>(null);
   const [reviewNotes, setReviewNotes] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
+  
+  const [rejectTarget, setRejectTarget] = useState<TechnicianReview | null>(null);
 
-  const fetchTechnicians = async () => {
+  const fetchQueue = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    setRefreshing(true);
     try {
-      const res = await fetch('/api/technicians');
+      const res = await fetch('/api/technicians?limit=50');
       if (res.ok) {
         const data = await res.json();
-        setTechnicians(data);
+        const items = Array.isArray(data) ? data : data?.items || [];
+        setTechnicians(items);
+        if (selectedTech) {
+          const updated = items.find((t: TechnicianReview) => t.id === selectedTech.id);
+          if (updated) setSelectedTech(updated);
+        }
       }
-    } catch (error) {
-      console.error('Failed to fetch technicians', error);
+    } catch (e) {
+      console.error('Failed to load verification queue', e);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  };
+  }, [selectedTech]);
 
   useEffect(() => {
-    fetchTechnicians();
-  }, []);
+    fetchQueue();
+  }, [fetchQueue]);
 
-  // Filter technicians based on tab
-  const filteredTechs = technicians.filter(t => {
-    const isPending = t.onboardingStatus === 'SUBMITTED' || t.onboardingStatus === 'UNDER_REVIEW';
-    const matchesTab = 
-      filterTab === 'PENDING' ? isPending :
-      filterTab === 'APPROVED' ? t.onboardingStatus === 'APPROVED' :
-      filterTab === 'REJECTED' ? t.onboardingStatus === 'REJECTED' :
-      filterTab === 'SUSPENDED' ? t.onboardingStatus === 'SUSPENDED' : true;
+  const filtered = technicians.filter((t) => {
+    const isPending = ['SUBMITTED', 'UNDER_REVIEW'].includes(t.onboardingStatus);
+    const matchesTab =
+      tab === 'PENDING' ? isPending :
+      tab === 'APPROVED' ? t.onboardingStatus === 'APPROVED' :
+      tab === 'REJECTED' ? t.onboardingStatus === 'REJECTED' : true;
 
-    const matchesSearch = 
-      t.fullName.toLowerCase().includes(search.toLowerCase()) ||
-      t.phone.includes(search) ||
-      t.currentCity.toLowerCase().includes(search.toLowerCase());
+    const matchesSearch =
+      t.fullName?.toLowerCase().includes(search.toLowerCase()) ||
+      t.contact?.includes(search) ||
+      t.user?.phone?.includes(search) ||
+      t.currentCity?.toLowerCase().includes(search.toLowerCase());
 
     return matchesTab && matchesSearch;
   });
 
-  const handleDecision = async (newStatus: OnboardingStatus) => {
-    if (!reviewTech) return;
-    
+  const handleFetchDocumentUrl = async (techId: string, docId: string) => {
     try {
-      const res = await fetch(`/api/technicians/${reviewTech.id}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus, reason: reviewNotes })
-      });
-      
+      const res = await fetch(`/api/technicians/${techId}/documents/${docId}/signed-url`);
       if (res.ok) {
-        await fetchTechnicians();
-        setReviewTech(null);
-        setReviewNotes('');
+        const data = await res.json();
+        if (data?.url) {
+          window.open(data.url, '_blank');
+        }
       }
-    } catch (error) {
-      console.error('Failed to update status', error);
+    } catch (e) {
+      console.error('Failed to fetch document URL', e);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex h-[60vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-      </div>
-    );
-  }
+  const handleApprove = async (techId: string) => {
+    setActionLoading(true);
+    try {
+      const res = await fetch(`/api/technicians/${techId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'APPROVED',
+          reviewNotes: reviewNotes || 'KYC documentation and identity verified by Administrator.',
+        }),
+      });
+      if (res.ok) {
+        setSelectedTech(null);
+        setReviewNotes('');
+        fetchQueue();
+      }
+    } catch (e) {
+      console.error('Failed to approve technician', e);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleReject = async (reason: string) => {
+    if (!rejectTarget) return;
+    setActionLoading(true);
+    try {
+      const res = await fetch(`/api/technicians/${rejectTarget.id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'REJECTED',
+          reviewNotes: reason,
+        }),
+      });
+      if (res.ok) {
+        setRejectTarget(null);
+        if (selectedTech?.id === rejectTarget.id) setSelectedTech(null);
+        fetchQueue();
+      }
+    } catch (e) {
+      console.error('Failed to reject technician', e);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const pendingCount = technicians.filter((t) => ['SUBMITTED', 'UNDER_REVIEW'].includes(t.onboardingStatus)).length;
 
   return (
-    <div className="space-y-6 pb-12">
-      {/* Top Banner */}
-      <div className="bg-gradient-to-r from-blue-900 to-indigo-900 text-white rounded-2xl p-6 shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+    <div className="space-y-4 pb-12">
+      {/* 1. Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
         <div>
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="w-6 h-6 text-blue-400" />
-            <h1 className="text-2xl font-bold">Technician Verification Hub</h1>
-          </div>
-          <p className="mt-1 text-sm text-blue-200">
-            Review submitted KYC documents, audit mandatory requirement compliance, and execute approval workflows.
+          <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+            <UserCheck className="w-5 h-5 text-amber-400" />
+            Workforce KYC & Compliance Audit Hub
+          </h1>
+          <p className="text-xs text-slate-400 mt-1">
+            Review government IDs, credentials, and bank records before authorizing field dispatch access.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="bg-white/10 backdrop-blur-md px-4 py-2 rounded-xl text-center border border-white/10">
-            <div className="text-xs text-blue-200">Pending Review</div>
-            <div className="text-xl font-bold text-white">
-              {technicians.filter(t => t.onboardingStatus === 'SUBMITTED' || t.onboardingStatus === 'UNDER_REVIEW').length}
-            </div>
-          </div>
-          <div className="bg-emerald-500/20 backdrop-blur-md px-4 py-2 rounded-xl text-center border border-emerald-500/30">
-            <div className="text-xs text-emerald-200">Approved</div>
-            <div className="text-xl font-bold text-emerald-300">
-              {technicians.filter(t => t.onboardingStatus === 'APPROVED').length}
-            </div>
-          </div>
+
+        <div className="flex items-center gap-2.5 self-start sm:self-auto">
+          <button
+            onClick={() => fetchQueue()}
+            disabled={refreshing}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-amber-400' : ''}`} />
+            <span>Sync</span>
+          </button>
+          <Link
+            href="/technicians"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 transition-colors"
+          >
+            <span>All Technicians</span>
+          </Link>
         </div>
       </div>
 
-      {/* Tabs & Search */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-xs">
-        <div className="flex flex-wrap items-center gap-1 bg-gray-100 p-1 rounded-lg w-full sm:w-auto">
-          <button
-            onClick={() => setFilterTab('PENDING')}
-            className={`px-4 py-2 rounded-md text-xs font-bold transition-all ${
-              filterTab === 'PENDING' ? 'bg-white text-blue-600 shadow-xs' : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Pending Review ({technicians.filter(t => t.onboardingStatus === 'SUBMITTED' || t.onboardingStatus === 'UNDER_REVIEW').length})
-          </button>
-          <button
-            onClick={() => setFilterTab('APPROVED')}
-            className={`px-4 py-2 rounded-md text-xs font-bold transition-all ${
-              filterTab === 'APPROVED' ? 'bg-white text-emerald-600 shadow-xs' : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Approved ({technicians.filter(t => t.onboardingStatus === 'APPROVED').length})
-          </button>
-          <button
-            onClick={() => setFilterTab('REJECTED')}
-            className={`px-4 py-2 rounded-md text-xs font-bold transition-all ${
-              filterTab === 'REJECTED' ? 'bg-white text-rose-600 shadow-xs' : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Rejected ({technicians.filter(t => t.onboardingStatus === 'REJECTED').length})
-          </button>
-          <button
-            onClick={() => setFilterTab('SUSPENDED')}
-            className={`px-4 py-2 rounded-md text-xs font-bold transition-all ${
-              filterTab === 'SUSPENDED' ? 'bg-white text-purple-600 shadow-xs' : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Suspended ({technicians.filter(t => t.onboardingStatus === 'SUSPENDED').length})
-          </button>
-          <button
-            onClick={() => setFilterTab('ALL')}
-            className={`px-4 py-2 rounded-md text-xs font-bold transition-all ${
-              filterTab === 'ALL' ? 'bg-white text-gray-900 shadow-xs' : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            All ({technicians.length})
-          </button>
+      {/* 2. Operational Tabs & Search */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-900 p-3 rounded-xl border border-slate-800">
+        <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs">
+          {(['PENDING', 'APPROVED', 'REJECTED', 'ALL'] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-3 py-1 rounded-md font-semibold transition-colors cursor-pointer ${
+                tab === t
+                  ? 'bg-amber-500 text-slate-950 shadow-xs font-bold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              {t === 'PENDING' ? `Awaiting Audit (${pendingCount})` : t.charAt(0) + t.slice(1).toLowerCase()}
+            </button>
+          ))}
         </div>
 
-        <div className="relative w-full sm:w-64">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <div className="relative flex-1 max-w-sm">
+          <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-2.5" />
           <input
             type="text"
-            placeholder="Search by name or phone..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+            placeholder="Search candidate name, phone, city..."
+            className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
           />
         </div>
       </div>
 
-      {/* Applications Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredTechs.length === 0 ? (
-          <div className="col-span-full bg-white p-12 text-center rounded-2xl border border-dashed border-gray-300">
-            <UserCheck className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-            <h3 className="text-sm font-semibold text-gray-700">No applications match this filter</h3>
-            <p className="text-xs text-gray-500 mt-1">Select a different tab or reset your search term.</p>
-          </div>
-        ) : (
-          filteredTechs.map((tech) => {
-            const hasAadhaar = tech.documents.some(d => d.type === 'AADHAAR');
-            const hasPan = tech.documents.some(d => d.type === 'PAN');
-            const hasBasicInfo = !!(tech.fullName && tech.dateOfBirth && tech.currentCity);
-            const hasPhoto = !!tech.profilePhoto;
-            const hasSkills = tech.skills.length > 0;
-            const isBackendCompliant = hasAadhaar && hasPan && hasBasicInfo && hasPhoto && hasSkills;
-
-            return (
-              <div key={tech.id} className="bg-white rounded-2xl border border-gray-200 shadow-xs hover:shadow-md transition-shadow flex flex-col justify-between overflow-hidden">
-                <div className="p-5 space-y-4">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <img src={tech.profilePhoto} alt={tech.fullName} className="w-12 h-12 rounded-full object-cover border" />
-                      <div>
-                        <h3 className="font-bold text-gray-900 text-sm flex items-center gap-1.5">
-                          {tech.fullName}
-                          {isBackendCompliant && <BadgeCheck className="w-4 h-4 text-blue-500 inline" />}
-                        </h3>
-                        <p className="text-xs text-gray-500">{tech.phone} • {tech.currentCity}</p>
-                      </div>
-                    </div>
-                    <span className={`px-2.5 py-0.5 text-xs font-semibold rounded-full border ${getStatusBadgeColor(tech.onboardingStatus)}`}>
-                      {tech.onboardingStatus.replace('_', ' ')}
-                    </span>
-                  </div>
-
-                  {/* Backend Compliance Checklist */}
-                  <div className="bg-gray-50 p-3 rounded-xl border border-gray-100 text-xs space-y-1.5">
-                    <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1 flex justify-between">
-                      <span>Backend Onboarding Audit</span>
-                      <span className={isBackendCompliant ? 'text-emerald-600 font-bold' : 'text-amber-600 font-bold'}>
-                        {isBackendCompliant ? 'Compliant' : 'Incomplete'}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-600">Aadhaar Document:</span>
-                      {hasAadhaar ? (
-                        <span className="text-emerald-600 font-bold flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Present</span>
-                      ) : (
-                        <span className="text-rose-600 font-bold flex items-center gap-1"><XCircle className="w-3.5 h-3.5" /> Missing</span>
-                      )}
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-600">PAN Document:</span>
-                      {hasPan ? (
-                        <span className="text-emerald-600 font-bold flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Present</span>
-                      ) : (
-                        <span className="text-rose-600 font-bold flex items-center gap-1"><XCircle className="w-3.5 h-3.5" /> Missing</span>
-                      )}
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-600">Basic Info & Photo:</span>
-                      {hasBasicInfo && hasPhoto ? (
-                        <span className="text-emerald-600 font-bold flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Complete</span>
-                      ) : (
-                        <span className="text-rose-600 font-bold flex items-center gap-1"><XCircle className="w-3.5 h-3.5" /> Incomplete</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Skills badges */}
-                  <div className="flex flex-wrap gap-1">
-                    {tech.skills.map(s => (
-                      <span key={s.id} className="px-2 py-0.5 bg-blue-50 text-blue-700 text-[11px] font-semibold rounded">
-                        {s.name}
-                      </span>
-                    ))}
-                  </div>
-
-                  {tech.reviewNotes && (
-                    <div className="bg-amber-50 border border-amber-200 p-2.5 rounded-lg text-xs text-amber-800 flex items-start gap-2">
-                      <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-                      <span><strong>Admin Note:</strong> {tech.reviewNotes}</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Footer Action */}
-                <div className="bg-gray-50 border-t border-gray-100 p-4 flex items-center justify-between">
-                  <span className="text-[11px] text-gray-500">
-                    {tech.submittedAt ? `Submitted ${new Date(tech.submittedAt).toLocaleDateString()}` : 'Draft Application'}
-                  </span>
-                  <button
-                    onClick={() => {
-                      setReviewTech(tech);
-                      setReviewNotes(tech.reviewNotes || '');
-                    }}
-                    className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg flex items-center gap-1 transition-colors"
+      {/* 3. Verification Queue Table */}
+      <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xs">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="border-b border-slate-800 bg-slate-950/60 text-slate-400 font-semibold uppercase text-[10px] tracking-wider">
+                <th className="py-2.5 px-4">Applicant</th>
+                <th className="py-2.5 px-4">Phone / Contact</th>
+                <th className="py-2.5 px-4">Location</th>
+                <th className="py-2.5 px-4">Documents on File</th>
+                <th className="py-2.5 px-4">Banking Info</th>
+                <th className="py-2.5 px-4">Current Status</th>
+                <th className="py-2.5 px-4 text-right">Audit Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60 text-slate-300">
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center text-slate-500">
+                    <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2 text-amber-500" />
+                    <span>Loading verification queue...</span>
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center text-slate-500">
+                    No applications in the selected review tab.
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((t) => (
+                  <tr
+                    key={t.id}
+                    onClick={() => setSelectedTech(t)}
+                    className="hover:bg-slate-800/50 transition-colors cursor-pointer group"
                   >
-                    <FileCheck2 className="w-3.5 h-3.5" /> Start Audit
-                  </button>
-                </div>
-              </div>
-            );
-          })
-        )}
+                    <td className="py-2.5 px-4 font-semibold text-white">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center font-bold text-[10px]">
+                          {t.fullName?.charAt(0) || 'T'}
+                        </div>
+                        <span className="truncate">{t.fullName || 'Technician'}</span>
+                      </div>
+                    </td>
+
+                    <td className="py-2.5 px-4 font-mono text-slate-300">
+                      {t.contact || t.user?.phone || 'No Contact'}
+                    </td>
+
+                    <td className="py-2.5 px-4 text-slate-400">
+                      {t.currentCity || 'Gujarat'}
+                    </td>
+
+                    <td className="py-2.5 px-4 font-mono text-[11px]">
+                      {t.documents && t.documents.length > 0 ? (
+                        <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                          <FileCheck2 className="w-3 h-3" />
+                          {t.documents.length} document(s)
+                        </span>
+                      ) : (
+                        <span className="text-rose-400 font-semibold">0 documents</span>
+                      )}
+                    </td>
+
+                    <td className="py-2.5 px-4 text-slate-400">
+                      {t.bankDetails?.bankName ? (
+                        <span className="truncate block max-w-[120px] text-slate-300 font-mono text-[11px]">
+                          {t.bankDetails.bankName}
+                        </span>
+                      ) : (
+                        <span className="text-slate-600 text-[11px]">Missing</span>
+                      )}
+                    </td>
+
+                    <td className="py-2.5 px-4 whitespace-nowrap">
+                      <StatusBadge status={t.onboardingStatus} size="sm" />
+                    </td>
+
+                    <td className="py-2.5 px-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => setSelectedTech(t)}
+                        className="px-3 py-1 text-xs font-bold rounded bg-amber-500 hover:bg-amber-400 text-slate-950 transition-colors cursor-pointer shadow-xs"
+                      >
+                        Audit
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {/* Review Modal */}
-      {reviewTech && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-200 p-6 space-y-6">
-            <div className="flex items-center justify-between border-b pb-4">
-              <div>
-                <h2 className="text-lg font-bold text-gray-900">Audit Application — {reviewTech.fullName}</h2>
-                <p className="text-xs text-gray-500">Review documents and decide approval status</p>
-              </div>
-              <button 
-                onClick={() => setReviewTech(null)} 
-                aria-label="Close audit modal"
-                className="text-gray-400 hover:text-gray-600 p-1"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Document Review List */}
-            <div className="space-y-3">
-              <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Submitted Document Files</h4>
-              {reviewTech.documents.map(doc => (
-                <div key={doc.id} className="p-3 border rounded-xl flex items-center justify-between bg-gray-50 text-xs">
-                  <div>
-                    <div className="font-bold text-gray-900">{formatDocType(doc.type)} ({doc.documentNumber || 'No Doc Number'})</div>
-                    <div className="text-gray-500">{doc.objectKey} • {(doc.fileSize / 1024).toFixed(0)} KB</div>
-                  </div>
-                  {doc.previewUrl && (
-                    <a
-                      href={doc.previewUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline flex items-center gap-1 font-semibold"
-                    >
-                      View File <ExternalLink className="w-3 h-3" />
-                    </a>
-                  )}
+      {/* 4. Slide-Over KYC Audit Case Drawer */}
+      <CaseDrawer
+        isOpen={!!selectedTech}
+        onClose={() => setSelectedTech(null)}
+        title={selectedTech?.fullName || 'Technician Audit'}
+        subtitle={`KYC Review Application • ${selectedTech?.currentCity || 'Gujarat'}`}
+        badge={selectedTech && <StatusBadge status={selectedTech.onboardingStatus} size="sm" />}
+        footer={
+          selectedTech && (
+            <>
+              {selectedTech.onboardingStatus !== 'REJECTED' && (
+                <button
+                  onClick={() => setRejectTarget(selectedTech)}
+                  className="px-3.5 py-1.5 text-xs font-bold text-rose-400 hover:bg-rose-500/10 border border-rose-500/20 rounded-lg transition-colors cursor-pointer"
+                >
+                  Reject
+                </button>
+              )}
+              {selectedTech.onboardingStatus !== 'APPROVED' && (
+                <button
+                  onClick={() => handleApprove(selectedTech.id)}
+                  disabled={actionLoading}
+                  className="px-4 py-1.5 text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1.5 shadow-xs"
+                >
+                  {actionLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Approve Application
+                </button>
+              )}
+            </>
+          )
+        }
+      >
+        {selectedTech && (
+          <div className="space-y-5">
+            {/* Identity Checklist */}
+            <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-2 text-xs">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
+                Identity & Contact Verification
+              </span>
+              <div className="grid grid-cols-2 gap-2 text-slate-300">
+                <div>
+                  <span className="text-slate-500 block text-[11px]">Applicant Name</span>
+                  <span className="font-semibold text-white">{selectedTech.fullName}</span>
                 </div>
-              ))}
+                <div>
+                  <span className="text-slate-500 block text-[11px]">Contact Phone</span>
+                  <span className="font-mono text-white">{selectedTech.contact || selectedTech.user?.phone}</span>
+                </div>
+              </div>
             </div>
 
-            {/* Notes Input */}
-            <div className="space-y-2">
-              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1">
-                <MessageSquare className="w-3.5 h-3.5" /> Verification / Rejection Notes
+            {/* Document Inspection Stream */}
+            <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-3 text-xs">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                Submitted Identity Documents ({selectedTech.documents?.length || 0})
+              </span>
+              <div className="divide-y divide-slate-800/60">
+                {!selectedTech.documents || selectedTech.documents.length === 0 ? (
+                  <p className="text-rose-400 py-2">
+                    No documents uploaded. Application cannot be approved without verified government ID.
+                  </p>
+                ) : (
+                  selectedTech.documents.map((doc) => (
+                    <div key={doc.id} className="py-2.5 flex items-center justify-between">
+                      <div>
+                        <span className="font-mono font-bold text-white block">{doc.type}</span>
+                        <span className="text-[10px] text-slate-500 font-mono">
+                          MIME: {doc.mimeType} • {(doc.fileSize / 1024).toFixed(0)} KB
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleFetchDocumentUrl(selectedTech.id, doc.id)}
+                        className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-blue-400 hover:text-blue-300 transition-colors text-xs font-medium inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <Eye className="w-3 h-3" />
+                        <span>View File</span>
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Review Notes Input */}
+            <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-2">
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                Compliance Review Notes
               </label>
               <textarea
                 value={reviewNotes}
                 onChange={(e) => setReviewNotes(e.target.value)}
-                placeholder="Reason for approval, rejection, or suspension..."
+                placeholder="Enter audit remarks or verification notes (persisted in audit log)..."
                 rows={3}
-                className="w-full border border-gray-300 rounded-lg p-2.5 text-xs text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
               />
             </div>
-
-            {/* Action Buttons */}
-            <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-4">
-              <button
-                onClick={() => handleDecision('UNDER_REVIEW')}
-                className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold flex items-center gap-1.5"
-              >
-                <Clock className="w-4 h-4" /> Move to Under Review
-              </button>
-              <button
-                onClick={() => handleDecision('REJECTED')}
-                className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5"
-              >
-                <XCircle className="w-4 h-4" /> Reject Application
-              </button>
-              <button
-                onClick={() => handleDecision('SUSPENDED')}
-                className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5"
-              >
-                <Ban className="w-4 h-4" /> Suspend
-              </button>
-              <button
-                onClick={() => handleDecision('APPROVED')}
-                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5"
-              >
-                <CheckCircle2 className="w-4 h-4" /> Approve Technician
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+        )}
+      </CaseDrawer>
+
+      {/* Reject Modal */}
+      <DestructiveModal
+        isOpen={!!rejectTarget}
+        onClose={() => setRejectTarget(null)}
+        onConfirm={handleReject}
+        title={`Reject Application: ${rejectTarget?.fullName}`}
+        description="Please provide the exact reason for rejection. This reason will be logged in the permanent audit trail."
+        confirmText="Reject Application"
+        confirmKeyword="REJECT"
+        reasonPlaceholder="e.g. Identity document blur / mismatch on Aadhaar card..."
+        consequences={[
+          'Applicant status will be marked REJECTED',
+          'Technician will be blocked from receiving any job dispatches',
+          'An audit log will be written recording this decision',
+        ]}
+      />
     </div>
   );
 }

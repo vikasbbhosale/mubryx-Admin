@@ -5,30 +5,23 @@ import Link from 'next/link';
 import { 
   Users, 
   UserCheck, 
-  FileCheck, 
   CalendarCheck, 
   Wallet, 
-  TrendingUp, 
   Layers, 
-  AlertCircle, 
   CheckCircle2, 
   Clock, 
   RefreshCw, 
   ArrowUpRight, 
   ShieldCheck, 
-  Shield, 
-  ExternalLink, 
-  ChevronRight, 
-  MapPin, 
-  Phone,
-  FileText,
   AlertTriangle,
-  Sparkles
+  Activity,
+  LifeBuoy
 } from 'lucide-react';
-import { TechnicianMock, getStatusBadgeColor } from '@/lib/mock-data';
+import { StatusBadge } from '@/components/ui/StatusBadge';
 
 interface DashboardStats {
   totalTechs: number;
+  activeTechs: number;
   pendingCount: number;
   approvedCount: number;
   totalDocs: number;
@@ -50,10 +43,24 @@ interface RecentBooking {
   snapshotAddress: string;
   snapshotCity: string | null;
   createdAt: string;
+  customer?: {
+    name: string | null;
+    phone: string;
+  };
   users?: {
     name: string | null;
     phone: string;
   };
+}
+
+interface TechnicianItem {
+  id: string;
+  fullName: string | null;
+  phone?: string;
+  contact?: string;
+  currentCity: string | null;
+  onboardingStatus: string;
+  isOnline?: boolean;
 }
 
 interface AuditItem {
@@ -64,7 +71,6 @@ interface AuditItem {
   status: string;
   createdAt: string;
   userPhone?: string | null;
-  reason?: string | null;
   user?: {
     name: string | null;
     phone: string;
@@ -72,14 +78,11 @@ interface AuditItem {
   } | null;
 }
 
-type OperationalDomain = 'ALL' | 'DISPATCH' | 'WORKFORCE' | 'FINANCE' | 'SECURITY';
-
 export default function DashboardPage() {
   const [adminName, setAdminName] = useState('Administrator');
   const [adminRole, setAdminRole] = useState('ADMIN');
-  const [selectedDomain, setSelectedDomain] = useState<OperationalDomain>('ALL');
   
-  const [technicians, setTechnicians] = useState<TechnicianMock[]>([]);
+  const [technicians, setTechnicians] = useState<TechnicianItem[]>([]);
   const [recentBookings, setRecentBookings] = useState<RecentBooking[]>([]);
   const [auditStream, setAuditStream] = useState<AuditItem[]>([]);
   
@@ -90,6 +93,7 @@ export default function DashboardPage() {
 
   const [stats, setStats] = useState<DashboardStats>({
     totalTechs: 0,
+    activeTechs: 0,
     pendingCount: 0,
     approvedCount: 0,
     totalDocs: 0,
@@ -103,94 +107,69 @@ export default function DashboardPage() {
     adminWalletBalance: 0,
   });
 
-  const loadDashboardData = useCallback(async (isManualRefresh = false) => {
-    if (isManualRefresh) setRefreshing(true);
+  const loadData = useCallback(async (isSilent = false) => {
+    if (!isSilent) setLoading(true);
+    setRefreshing(true);
     setError(null);
 
     try {
-      // 1. Fetch authenticated admin profile
-      fetch('/api/auth/me')
-        .then((res) => res.json())
-        .then((data) => {
-          if (data?.user) {
-            if (data.user.name) setAdminName(data.user.name);
-            if (data.user.role) setAdminRole(data.user.role);
-          }
-        })
-        .catch(() => {});
-
-      // 2. Fetch platform aggregates and recent items in parallel
-      const [techsRes, statsRes, bookingsRes, auditRes] = await Promise.all([
-        fetch('/api/technicians').then((r) => (r.ok ? r.json() : [])).catch(() => []),
-        fetch('/api/dashboard/stats').then((r) => (r.ok ? r.json() : null)).catch(() => null),
-        fetch('/api/bookings').then((r) => (r.ok ? r.json() : [])).catch(() => []),
-        fetch('/api/audit-logs?limit=5').then((r) => (r.ok ? r.json() : null)).catch(() => null),
-      ]);
-
-      // Normalize technicians list
-      if (techsRes) {
-        const techList = Array.isArray(techsRes)
-          ? techsRes
-          : Array.isArray(techsRes?.data?.items)
-          ? techsRes.data.items
-          : Array.isArray(techsRes?.data)
-          ? techsRes.data
-          : Array.isArray(techsRes?.items)
-          ? techsRes.items
-          : [];
-        setTechnicians(techList);
+      // 1. Authenticated Operator Profile
+      const meRes = await fetch('/api/auth/me').catch(() => null);
+      if (meRes && meRes.ok) {
+        const meData = await meRes.json();
+        if (meData?.user?.name) setAdminName(meData.user.name);
+        if (meData?.user?.role) setAdminRole(meData.user.role);
       }
 
-      // Normalize stats
-      if (statsRes) {
-        const payload = statsRes?.data || statsRes;
-        if (payload && typeof payload === 'object') {
-          setStats({
-            totalTechs: Number(payload.totalTechs ?? payload.techniciansCount ?? 0),
-            approvedCount: Number(payload.approvedCount ?? payload.activeTechniciansCount ?? 0),
-            pendingCount: Number(payload.pendingCount ?? payload.pendingVerificationsCount ?? 0),
-            totalDocs: Number(payload.totalDocs ?? payload.totalDocumentsCount ?? 0),
-            totalBookings: Number(payload.totalBookings ?? payload.totalBookingsCount ?? 0),
-            activeBookings: Number(payload.activeBookings ?? payload.activeBookingsCount ?? 0),
-            completedBookings: Number(payload.completedBookings ?? payload.completedBookingsCount ?? 0),
-            totalServices: Number(payload.totalServices ?? payload.totalServicesCount ?? 0),
-            totalCustomers: Number(payload.totalCustomers ?? payload.totalUsersCount ?? 0),
-            grossRevenue: Number(payload.grossRevenue ?? payload.totalRevenue ?? 0),
-            totalCommission: Number(payload.totalCommission ?? 0),
-            adminWalletBalance: Number(payload.adminWalletBalance ?? 0),
-          });
-        }
+      // 2. Authoritative Platform Stats
+      const statsRes = await fetch('/api/dashboard/stats').catch(() => null);
+      if (statsRes && statsRes.ok) {
+        const s = await statsRes.json();
+        setStats({
+          totalTechs: s.techniciansCount ?? 0,
+          activeTechs: s.activeTechniciansCount ?? 0,
+          pendingCount: s.pendingVerificationsCount ?? 0,
+          approvedCount: (s.techniciansCount ?? 0) - (s.pendingVerificationsCount ?? 0),
+          totalDocs: s.totalDocumentsCount ?? 0,
+          totalBookings: s.totalBookingsCount ?? 0,
+          activeBookings: s.activeBookingsCount ?? 0,
+          completedBookings: s.completedBookingsCount ?? 0,
+          totalServices: s.totalServicesCount ?? 0,
+          totalCustomers: s.totalUsersCount ?? 0,
+          grossRevenue: s.totalRevenue ?? 0,
+          totalCommission: s.totalCommission ?? 0,
+          adminWalletBalance: s.adminWalletBalance ?? 0,
+        });
       }
 
-      // Normalize recent bookings
-      if (bookingsRes) {
-        const bookingList = Array.isArray(bookingsRes)
-          ? bookingsRes
-          : Array.isArray(bookingsRes?.data?.items)
-          ? bookingsRes.data.items
-          : Array.isArray(bookingsRes?.data)
-          ? bookingsRes.data
-          : Array.isArray(bookingsRes?.items)
-          ? bookingsRes.items
-          : [];
-        setRecentBookings(bookingList.slice(0, 6));
+      // 3. Live Recent Bookings
+      const bookRes = await fetch('/api/bookings?limit=8').catch(() => null);
+      if (bookRes && bookRes.ok) {
+        const bData = await bookRes.json();
+        const items = Array.isArray(bData) ? bData : bData?.items || [];
+        setRecentBookings(items.slice(0, 7));
       }
 
-      // Normalize audit stream
-      if (auditRes) {
-        const auditList = Array.isArray(auditRes?.items)
-          ? auditRes.items
-          : Array.isArray(auditRes?.data?.items)
-          ? auditRes.data.items
-          : Array.isArray(auditRes)
-          ? auditRes
-          : [];
-        setAuditStream(auditList.slice(0, 5));
+      // 4. Technician Workforce
+      const techRes = await fetch('/api/technicians?limit=8').catch(() => null);
+      if (techRes && techRes.ok) {
+        const tData = await techRes.json();
+        const items = Array.isArray(tData) ? tData : tData?.items || [];
+        setTechnicians(items.slice(0, 7));
+      }
+
+      // 5. Audit Log Stream
+      const auditRes = await fetch('/api/audit-logs?limit=6').catch(() => null);
+      if (auditRes && auditRes.ok) {
+        const aData = await auditRes.json();
+        const items = Array.isArray(aData?.items) ? aData.items : [];
+        setAuditStream(items.slice(0, 5));
       }
 
       setLastSynced(new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
     } catch (err: any) {
-      setError(err?.message || 'Error connecting to management services');
+      console.error('Operations fetch error:', err);
+      setError('Operational feeds degraded. Connecting to server...');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -198,512 +177,398 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    loadDashboardData();
-  }, [loadDashboardData]);
-
-  // Status Chip helper
-  const getBookingStatusBadge = (status: string) => {
-    switch (status?.toUpperCase()) {
-      case 'COMPLETED':
-      case 'SERVICE_COMPLETED':
-        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-      case 'TECHNICIAN_ASSIGNED':
-      case 'TECHNICIAN_ACCEPTED':
-      case 'TECHNICIAN_ON_THE_WAY':
-      case 'TECHNICIAN_ARRIVED':
-      case 'SERVICE_STARTED':
-        return 'bg-blue-50 text-blue-700 border-blue-200';
-      case 'PENDING_MATCHING':
-      case 'TECHNICIAN_SEARCHING':
-      case 'PENDING':
-        return 'bg-amber-50 text-amber-700 border-amber-200';
-      case 'CANCELLED':
-        return 'bg-rose-50 text-rose-700 border-rose-200';
-      default:
-        return 'bg-slate-100 text-slate-700 border-slate-200';
-    }
-  };
-
-  // Full Skeleton Loader
-  if (loading) {
-    return (
-      <div className="space-y-6 pb-12 max-w-7xl mx-auto animate-pulse">
-        {/* Header Skeleton */}
-        <div className="flex justify-between items-center pb-4 border-b border-white/5">
-          <div className="space-y-2">
-            <div className="h-6 w-56 bg-white/5 rounded" />
-            <div className="h-3 w-80 bg-white/5 rounded" />
-          </div>
-          <div className="h-8 w-24 bg-white/5 rounded" />
-        </div>
-
-        {/* Attention Skeleton */}
-        <div className="h-12 bg-white/5 rounded-xl border border-white/5" />
-
-        {/* KPI Skeleton */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((k) => (
-            <div key={k} className="p-4 bg-slate-900/40 rounded-xl border border-white/5 space-y-4">
-              <div className="flex justify-between">
-                <div className="h-3 w-24 bg-white/5 rounded" />
-                <div className="h-4 w-4 bg-white/5 rounded-full" />
-              </div>
-              <div className="h-8 w-20 bg-white/10 rounded" />
-              <div className="h-2.5 w-36 bg-white/5 rounded" />
-            </div>
-          ))}
-        </div>
-
-        {/* Feeds Skeleton */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="h-80 bg-slate-900/40 rounded-xl border border-white/5 p-4" />
-          <div className="h-80 bg-slate-900/40 rounded-xl border border-white/5 p-4" />
-        </div>
-      </div>
-    );
-  }
-
-  // Error State
-  if (error) {
-    return (
-      <div className="py-20 text-center max-w-md mx-auto relative z-10">
-        <div className="w-16 h-16 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center mx-auto mb-4 shadow-[0_0_15px_rgba(225,29,72,0.2)]">
-          <AlertCircle className="w-8 h-8" />
-        </div>
-        <h2 className="text-lg font-bold text-white tracking-wide">Dashboard Connectivity Issue</h2>
-        <p className="text-sm text-slate-400 mt-2 mb-6 leading-relaxed">{error}</p>
-        <button
-          onClick={() => loadDashboardData(true)}
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-slate-900 hover:bg-slate-200 text-sm font-bold rounded-xl transition-all shadow-lg hover:shadow-white/20 hover:-translate-y-0.5 cursor-pointer"
-        >
-          <RefreshCw className="w-4 h-4" />
-          Retry Connection
-        </button>
-      </div>
-    );
-  }
+    loadData();
+    const interval = setInterval(() => loadData(true), 30000);
+    return () => clearInterval(interval);
+  }, [loadData]);
 
   return (
-    <div className="space-y-6 pb-16 max-w-7xl mx-auto">
-      {/* 1. Operational Overview Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-white/5 relative z-10">
+    <div className="space-y-5 pb-12">
+      {/* 1. Operations Header Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
         <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-blue-400" />
-              Operations & Governance
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-xl font-bold tracking-tight text-white">
+              Operations Control Center
             </h1>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded-md font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20 uppercase tracking-widest">
-              {adminRole}
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-bold uppercase">
+              {adminRole === 'SUPER_ADMIN' ? 'Super Admin' : 'Admin'}
             </span>
           </div>
-          <p className="text-sm text-slate-400 mt-1.5">
-            Production environment telemetry, active dispatches, compliance audits, and security logs.
+          <p className="text-xs text-slate-400 mt-1">
+            Real-time marketplace monitoring: customer dispatch, field workforce compliance, and platform ledger.
           </p>
         </div>
 
-        {/* Sync Status & Manual Refresh */}
-        <div className="flex items-center gap-3 self-start md:self-auto">
+        <div className="flex items-center gap-3 self-start sm:self-auto">
           {lastSynced && (
-            <span className="text-[11px] font-mono font-medium text-slate-500">
-              Synced {lastSynced}
+            <span className="text-[11px] font-mono text-slate-500 hidden md:inline">
+              Updated {lastSynced}
             </span>
           )}
           <button
-            onClick={() => loadDashboardData(true)}
+            onClick={() => loadData()}
             disabled={refreshing}
-            className="group inline-flex items-center gap-2 px-4 py-2 bg-slate-900/50 hover:bg-slate-800/80 text-white text-xs font-bold rounded-xl border border-white/10 shadow-lg transition-all hover:border-white/20 cursor-pointer backdrop-blur-md"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors cursor-pointer disabled:opacity-50"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-blue-400' : 'text-slate-400 group-hover:text-white transition-colors'}`} />
-            <span className="hidden sm:inline">Refresh Data</span>
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-blue-400' : ''}`} />
+            <span>Sync Feeds</span>
           </button>
+          <Link
+            href="/live-ops"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors cursor-pointer shadow-xs"
+          >
+            <Activity className="w-3.5 h-3.5" />
+            <span>Live Ops Board</span>
+          </Link>
         </div>
       </div>
 
-      {/* 2. Multi-Team Operational Domain Switcher */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-white/5 text-xs font-bold tracking-wide relative z-10 custom-scrollbar">
-        {[
-          { id: 'ALL', label: 'All Operations', count: undefined },
-          { id: 'DISPATCH', label: 'Dispatch & Orders', count: stats.activeBookings },
-          { id: 'WORKFORCE', label: 'Workforce & KYC', count: stats.pendingCount },
-          { id: 'FINANCE', label: 'Financials & Wallets', count: undefined },
-          { id: 'SECURITY', label: 'Security & Audits', count: auditStream.length },
-        ].map((domain) => {
-          const isActive = selectedDomain === domain.id;
-          return (
-            <button
-              key={domain.id}
-              onClick={() => setSelectedDomain(domain.id as OperationalDomain)}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl whitespace-nowrap transition-all cursor-pointer border ${
-                isActive
-                  ? 'bg-blue-600/10 text-blue-400 border-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.15)]'
-                  : 'bg-transparent text-slate-400 border-transparent hover:text-slate-200 hover:bg-white/5 hover:border-white/10'
-              }`}
-            >
-              <span>{domain.label}</span>
-              {domain.count !== undefined && domain.count > 0 && (
-                <span
-                  className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md font-bold ${
-                    isActive
-                      ? 'bg-blue-500/20 text-blue-300'
-                      : domain.id === 'WORKFORCE'
-                      ? 'bg-amber-500/20 text-amber-400'
-                      : 'bg-slate-800 text-slate-300'
-                  }`}
-                >
-                  {domain.count}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+      {error && (
+        <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-rose-400 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+          <button onClick={() => loadData()} className="underline font-bold hover:text-white cursor-pointer">
+            Retry
+          </button>
+        </div>
+      )}
 
-      {/* 3. Attention Queue Banner (Actionable & Contextual) */}
-      <div className="relative z-10">
+      {/* 2. Actionable Attention Queue */}
+      <div>
         {stats.pendingCount > 0 ? (
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-gradient-to-r from-amber-500/10 to-amber-900/10 border border-amber-500/20 rounded-2xl text-xs shadow-lg shadow-amber-900/10 backdrop-blur-md">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center flex-shrink-0">
-                <AlertTriangle className="w-5 h-5 text-amber-500" />
+              <div className="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-4 h-4 text-amber-400" />
               </div>
               <div>
-                <span className="font-bold text-amber-500 tracking-wide block text-sm mb-0.5">
-                  Compliance Review Queue: {stats.pendingCount} action(s) pending audit.
+                <span className="font-bold text-amber-400 tracking-wide block">
+                  Workforce Audit Queue: {stats.pendingCount} technician application(s) awaiting verification.
                 </span>
-                <span className="text-amber-500/70">
-                  KYC and identity uploads require verification before field dispatch access.
+                <span className="text-amber-400/70 text-[11px]">
+                  Pending KYC and identity documents prevent field job dispatches.
                 </span>
               </div>
             </div>
             <Link
               href="/verifications"
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold rounded-xl text-xs transition-all self-start sm:self-auto shadow-[0_0_15px_rgba(245,158,11,0.4)] hover:shadow-[0_0_25px_rgba(245,158,11,0.6)]"
+              className="inline-flex items-center gap-1 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-xs transition-colors self-start sm:self-auto flex-shrink-0"
             >
-              Review Queue <ChevronRight className="w-4 h-4" />
+              Audit Queue ({stats.pendingCount}) <ArrowUpRight className="w-3.5 h-3.5" />
             </Link>
           </div>
         ) : stats.activeBookings > 0 ? (
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-gradient-to-r from-blue-600/10 to-indigo-600/10 border border-blue-500/20 rounded-2xl text-xs shadow-lg shadow-blue-900/10 backdrop-blur-md">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center flex-shrink-0 relative">
-                <div className="absolute inset-0 rounded-full border-2 border-blue-400 animate-ping opacity-20"></div>
-                <div className="w-2.5 h-2.5 rounded-full bg-blue-400 shadow-[0_0_10px_rgba(96,165,250,1)]"></div>
+              <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center flex-shrink-0">
+                <Activity className="w-4 h-4 text-blue-400" />
               </div>
               <div>
-                <span className="font-bold text-blue-400 tracking-wide block text-sm mb-0.5">
-                  {stats.activeBookings} active customer dispatches in progress
+                <span className="font-bold text-blue-400 tracking-wide block">
+                  {stats.activeBookings} active customer job(s) in progress across cities.
                 </span>
-                <span className="text-blue-400/70">Real-time matching and technician fulfillment ongoing.</span>
+                <span className="text-blue-400/70 text-[11px]">
+                  Real-time matching, technician arrival, and fulfillment ongoing.
+                </span>
               </div>
             </div>
-            <Link href="/bookings" className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-500 hover:bg-blue-400 text-white font-bold rounded-xl text-xs transition-all self-start sm:self-auto shadow-[0_0_15px_rgba(59,130,246,0.4)]">
-              Monitor Live Orders <ArrowUpRight className="w-4 h-4" />
+            <Link
+              href="/live-ops"
+              className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-xs transition-colors self-start sm:self-auto flex-shrink-0"
+            >
+              Air-Traffic Board <ArrowUpRight className="w-3.5 h-3.5" />
             </Link>
           </div>
         ) : (
-          <div className="flex items-center gap-3 p-4 bg-slate-900/50 backdrop-blur-md border border-white/5 rounded-2xl text-sm text-slate-400 shadow-lg">
-            <CheckCircle2 className="w-5 h-5 text-emerald-500 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-            <span className="font-medium tracking-wide">Operational queues nominal • Zero pending verifications • All systems synchronized</span>
+          <div className="flex items-center gap-2.5 p-3 bg-slate-900 border border-slate-800 rounded-xl text-xs text-slate-400">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            <span>All operational queues nominal • Zero pending verifications • Services synchronized</span>
           </div>
         )}
       </div>
 
-      {/* 4. High-Density KPI Metric Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 relative z-10">
-        {/* Metric 1: Orders & Dispatches */}
+      {/* 3. High-Density Operational KPI Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+        {/* KPI 1: Active Dispatches */}
         <Link
           href="/bookings"
-          className="group p-5 bg-slate-900/40 backdrop-blur-xl rounded-2xl border border-white/5 shadow-lg hover:shadow-2xl hover:shadow-blue-500/10 hover:border-blue-500/30 transition-all hover:-translate-y-1 duration-300 flex flex-col justify-between"
+          className="p-4 bg-slate-900 rounded-xl border border-slate-800 hover:border-slate-700 transition-colors flex flex-col justify-between"
         >
-          <div>
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-[10px] uppercase tracking-widest text-slate-500 group-hover:text-blue-400 transition-colors">Active Dispatches</span>
-              <div className="p-2 bg-blue-500/10 rounded-lg group-hover:bg-blue-500/20 transition-colors">
-                <CalendarCheck className="w-4 h-4 text-blue-500 drop-shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
-              </div>
-            </div>
-            <div className="mt-4 flex items-baseline gap-2">
-              <span className="text-3xl font-black tracking-tight text-white font-mono group-hover:text-blue-50 transition-colors">
-                {stats.activeBookings}
-              </span>
-              <span className="text-xs text-slate-400 font-medium">in field</span>
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Active Dispatches
+            </span>
+            <div className="p-1.5 bg-blue-500/10 rounded-md">
+              <CalendarCheck className="w-4 h-4 text-blue-400" />
             </div>
           </div>
-          <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-between text-[11px] text-slate-500 font-medium">
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-2xl font-black tracking-tight text-white font-mono">
+              {stats.activeBookings}
+            </span>
+            <span className="text-[11px] text-slate-500">jobs in field</span>
+          </div>
+          <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500">
             <span>{stats.totalBookings} total orders placed</span>
-            <ArrowUpRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-blue-400 transition-colors" />
+            <ArrowUpRight className="w-3 h-3 text-slate-400" />
           </div>
         </Link>
 
-        {/* Metric 2: Workforce & Verification */}
+        {/* KPI 2: Workforce Readiness */}
         <Link
-          href="/verifications"
-          className="group p-5 bg-slate-900/40 backdrop-blur-xl rounded-2xl border border-white/5 shadow-lg hover:shadow-2xl hover:shadow-amber-500/10 hover:border-amber-500/30 transition-all hover:-translate-y-1 duration-300 flex flex-col justify-between"
+          href="/technicians"
+          className="p-4 bg-slate-900 rounded-xl border border-slate-800 hover:border-slate-700 transition-colors flex flex-col justify-between"
         >
-          <div>
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-[10px] uppercase tracking-widest text-slate-500 group-hover:text-amber-400 transition-colors">Pending KYC Audits</span>
-              <div className="p-2 bg-amber-500/10 rounded-lg group-hover:bg-amber-500/20 transition-colors">
-                <UserCheck className="w-4 h-4 text-amber-500 drop-shadow-[0_0_8px_rgba(245,158,11,0.5)]" />
-              </div>
-            </div>
-            <div className="mt-4 flex items-baseline gap-2">
-              <span className="text-3xl font-black tracking-tight text-white font-mono group-hover:text-amber-50 transition-colors">
-                {stats.pendingCount}
-              </span>
-              {stats.pendingCount > 0 ? (
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-400 border border-amber-500/20 uppercase tracking-widest shadow-[0_0_10px_rgba(245,158,11,0.2)]">
-                  Action Required
-                </span>
-              ) : (
-                <span className="text-[10px] font-bold text-emerald-400 tracking-widest uppercase">Cleared</span>
-              )}
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Technician Workforce
+            </span>
+            <div className="p-1.5 bg-emerald-500/10 rounded-md">
+              <Users className="w-4 h-4 text-emerald-400" />
             </div>
           </div>
-          <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-between text-[11px] text-slate-500 font-medium">
-            <span>{stats.approvedCount} approved of {stats.totalTechs}</span>
-            <ArrowUpRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-amber-400 transition-colors" />
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-2xl font-black tracking-tight text-white font-mono">
+              {stats.totalTechs}
+            </span>
+            <span className="text-[11px] text-emerald-400 font-semibold">
+              {stats.activeTechs} active
+            </span>
+          </div>
+          <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500">
+            <span>{stats.pendingCount} pending KYC audit</span>
+            <ArrowUpRight className="w-3 h-3 text-slate-400" />
           </div>
         </Link>
 
-        {/* Metric 3: Gross Order Volume */}
+        {/* KPI 3: Gross Volume (GMV) */}
         <Link
           href="/finance"
-          className="group p-5 bg-slate-900/40 backdrop-blur-xl rounded-2xl border border-white/5 shadow-lg hover:shadow-2xl hover:shadow-emerald-500/10 hover:border-emerald-500/30 transition-all hover:-translate-y-1 duration-300 flex flex-col justify-between"
+          className="p-4 bg-slate-900 rounded-xl border border-slate-800 hover:border-slate-700 transition-colors flex flex-col justify-between"
         >
-          <div>
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-[10px] uppercase tracking-widest text-slate-500 group-hover:text-emerald-400 transition-colors">Gross Volume (GMV)</span>
-              <div className="p-2 bg-emerald-500/10 rounded-lg group-hover:bg-emerald-500/20 transition-colors">
-                <Wallet className="w-4 h-4 text-emerald-500 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-              </div>
-            </div>
-            <div className="mt-4 flex items-baseline gap-2">
-              <span className="text-3xl font-black tracking-tight text-white font-mono group-hover:text-emerald-50 transition-colors">
-                ₹{stats.grossRevenue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-              </span>
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Gross Volume (GMV)
+            </span>
+            <div className="p-1.5 bg-indigo-500/10 rounded-md">
+              <Wallet className="w-4 h-4 text-indigo-400" />
             </div>
           </div>
-          <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-between text-[11px] text-slate-500 font-medium">
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-2xl font-black tracking-tight text-white font-mono">
+              ₹{stats.grossRevenue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+            </span>
+          </div>
+          <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500">
             <span>₹{stats.totalCommission.toLocaleString('en-IN', { maximumFractionDigits: 0 })} commission</span>
-            <ArrowUpRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-emerald-400 transition-colors" />
+            <ArrowUpRight className="w-3 h-3 text-slate-400" />
           </div>
         </Link>
 
-        {/* Metric 4: Platform Documents & Catalog */}
+        {/* KPI 4: Catalog & Services */}
         <Link
-          href="/documents"
-          className="group p-5 bg-slate-900/40 backdrop-blur-xl rounded-2xl border border-white/5 shadow-lg hover:shadow-2xl hover:shadow-indigo-500/10 hover:border-indigo-500/30 transition-all hover:-translate-y-1 duration-300 flex flex-col justify-between"
+          href="/services"
+          className="p-4 bg-slate-900 rounded-xl border border-slate-800 hover:border-slate-700 transition-colors flex flex-col justify-between"
         >
-          <div>
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-[10px] uppercase tracking-widest text-slate-500 group-hover:text-indigo-400 transition-colors">KYC Documents</span>
-              <div className="p-2 bg-indigo-500/10 rounded-lg group-hover:bg-indigo-500/20 transition-colors">
-                <FileCheck className="w-4 h-4 text-indigo-500 drop-shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
-              </div>
-            </div>
-            <div className="mt-4 flex items-baseline gap-2">
-              <span className="text-3xl font-black tracking-tight text-white font-mono group-hover:text-indigo-50 transition-colors">
-                {stats.totalDocs}
-              </span>
-              <span className="text-xs text-slate-400 font-medium">on file</span>
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Catalog Services
+            </span>
+            <div className="p-1.5 bg-slate-800 rounded-md">
+              <Layers className="w-4 h-4 text-slate-400" />
             </div>
           </div>
-          <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-between text-[11px] text-slate-500 font-medium">
-            <span>{stats.totalServices} active catalog services</span>
-            <ArrowUpRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-indigo-400 transition-colors" />
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-2xl font-black tracking-tight text-white font-mono">
+              {stats.totalServices}
+            </span>
+            <span className="text-[11px] text-slate-500">active offerings</span>
+          </div>
+          <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500">
+            <span>{stats.totalCustomers} registered customers</span>
+            <ArrowUpRight className="w-3 h-3 text-slate-400" />
           </div>
         </Link>
       </div>
 
-      {/* 5. Production Operational Panels Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 relative z-10">
-        {/* Panel A: Live Customer Orders (Operations Team) */}
-        <div className={`bg-slate-900/50 backdrop-blur-xl rounded-2xl border border-white/5 shadow-lg p-5 flex flex-col justify-between ${
-          selectedDomain === 'WORKFORCE' || selectedDomain === 'SECURITY' ? 'opacity-50 hover:opacity-100 transition-opacity' : ''
-        }`}>
+      {/* 4. Split Operational Consoles */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* Console A: Recent Customer Orders */}
+        <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between pb-4 border-b border-white/5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <div className="flex items-center gap-2">
                 <CalendarCheck className="w-4 h-4 text-slate-400" />
-                <h2 className="text-xs font-bold uppercase tracking-widest text-slate-300">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-200">
                   Recent Orders & Dispatches
                 </h2>
               </div>
               <Link
                 href="/bookings"
-                className="text-[11px] font-bold tracking-wide text-blue-400 hover:text-blue-300 transition-colors inline-flex items-center gap-1"
+                className="text-[11px] font-bold text-blue-400 hover:text-blue-300 transition-colors inline-flex items-center gap-1"
               >
-                Dispatch Room <ArrowUpRight className="w-3.5 h-3.5" />
+                All Orders <ArrowUpRight className="w-3 h-3" />
               </Link>
             </div>
 
-            <div className="divide-y divide-white/5 mt-2">
+            <div className="divide-y divide-slate-800/60 mt-1">
               {recentBookings.length === 0 ? (
-                <div className="py-12 text-center text-slate-500 text-xs font-medium tracking-wide">
-                  No recent bookings recorded in system.
+                <div className="py-10 text-center text-slate-500 text-xs">
+                  No recent bookings recorded.
                 </div>
               ) : (
-                recentBookings.map((b) => (
-                  <div key={b.id} className="py-3 flex items-center justify-between text-xs hover:bg-white/5 px-2 -mx-2 rounded-xl transition-all cursor-default">
-                    <div>
-                      <div className="flex items-center gap-2.5">
-                        <span className="font-mono font-bold text-white text-[11px] bg-slate-800/80 px-1.5 py-0.5 rounded">
-                          {b.bookingNumber}
-                        </span>
-                        <span className={`text-[9px] px-2 py-0.5 rounded-md font-bold tracking-widest uppercase border ${
-                          b.status === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
-                          b.status === 'CANCELLED' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' :
-                          'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                        }`}>
-                          {b.status ? b.status.replace(/_/g, ' ') : 'PENDING'}
-                        </span>
+                recentBookings.map((b) => {
+                  const customerName = b.customer?.name || b.users?.name || 'Customer';
+                  return (
+                    <div
+                      key={b.id}
+                      className="py-2.5 flex items-center justify-between text-xs hover:bg-slate-800/40 px-1 rounded transition-colors"
+                    >
+                      <div className="min-w-0 pr-3">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-white text-[11px]">
+                            {b.bookingNumber}
+                          </span>
+                          <StatusBadge status={b.status} size="sm" />
+                        </div>
+                        <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5 truncate">
+                          <span className="text-slate-300 font-medium">{customerName}</span>
+                          <span className="text-slate-600">•</span>
+                          <span className="text-slate-500 truncate">{b.snapshotCity || 'Gujarat'}</span>
+                        </div>
                       </div>
-                      <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-2">
-                        <span className="font-medium text-slate-300">{b.users?.name || 'Customer'}</span>
-                        <span className="text-slate-600">•</span>
-                        <span className="truncate max-w-[140px] text-slate-500 font-mono">{b.snapshotCity || 'Ahmedabad'}</span>
+
+                      <div className="text-right flex-shrink-0">
+                        <div className="font-mono font-bold text-white text-xs">
+                          ₹{(b.totalAmount ?? 0).toFixed(0)}
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-mono">
+                          {b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }) : 'Today'}
+                        </div>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="font-mono font-bold text-white text-xs bg-slate-800/50 px-2 py-1 rounded-md inline-block">
-                        ₹{(b.totalAmount ?? 0).toFixed(0)}
-                      </div>
-                      <div className="text-[10px] text-slate-500 font-mono mt-1">
-                        {b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }) : 'Recent'}
-                      </div>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
 
-          <div className="pt-4 mt-4 border-t border-white/5 flex items-center justify-between text-[11px]">
-            <span className="text-slate-500 font-medium">Live order routing & technician matching</span>
-            <Link href="/bookings" className="font-bold tracking-wide text-slate-300 hover:text-white transition-colors">
-              Open All Bookings &rarr;
+          <div className="pt-3 mt-3 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-500">
+            <span>Live order routing and technician dispatch</span>
+            <Link href="/bookings" className="font-semibold text-slate-300 hover:text-white">
+              Open Dispatch Room &rarr;
             </Link>
           </div>
         </div>
 
-        {/* Panel B: Technician Compliance Pipeline (Workforce Team) */}
-        <div className={`bg-slate-900/50 backdrop-blur-xl rounded-2xl border border-white/5 shadow-lg p-5 flex flex-col justify-between ${
-          selectedDomain === 'DISPATCH' || selectedDomain === 'FINANCE' ? 'opacity-50 hover:opacity-100 transition-opacity' : ''
-        }`}>
+        {/* Console B: Workforce Verification Pipeline */}
+        <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between pb-4 border-b border-white/5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <div className="flex items-center gap-2">
                 <UserCheck className="w-4 h-4 text-slate-400" />
-                <h2 className="text-xs font-bold uppercase tracking-widest text-slate-300">
-                  Workforce Verification Pipeline
+                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-200">
+                  Technician Workforce Pipeline
                 </h2>
               </div>
               <Link
                 href="/verifications"
-                className="text-[11px] font-bold tracking-wide text-amber-500 hover:text-amber-400 transition-colors inline-flex items-center gap-1"
+                className="text-[11px] font-bold text-amber-400 hover:text-amber-300 transition-colors inline-flex items-center gap-1"
               >
-                Verification Hub <ArrowUpRight className="w-3.5 h-3.5" />
+                Review Hub <ArrowUpRight className="w-3 h-3" />
               </Link>
             </div>
 
-            <div className="divide-y divide-white/5 mt-2">
+            <div className="divide-y divide-slate-800/60 mt-1">
               {technicians.length === 0 ? (
-                <div className="py-12 text-center text-slate-500 text-xs font-medium tracking-wide">
-                  No technician profiles currently registered.
+                <div className="py-10 text-center text-slate-500 text-xs">
+                  No technician profiles registered.
                 </div>
               ) : (
-                technicians.slice(0, 6).map((tech) => (
-                  <div key={tech.id} className="py-3 flex items-center justify-between text-xs hover:bg-white/5 px-2 -mx-2 rounded-xl transition-all cursor-default">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-slate-800 border border-white/10 flex items-center justify-center font-black text-slate-300 text-xs flex-shrink-0">
-                        {tech.fullName?.charAt(0) || 'T'}
+                technicians.map((t) => (
+                  <div
+                    key={t.id}
+                    className="py-2.5 flex items-center justify-between text-xs hover:bg-slate-800/40 px-1 rounded transition-colors"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0 pr-3">
+                      <div className="w-7 h-7 rounded-md bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-slate-300 text-xs flex-shrink-0">
+                        {t.fullName?.charAt(0) || 'T'}
                       </div>
-                      <div>
-                        <div className="font-bold text-white text-xs tracking-wide">
-                          {tech.fullName || 'Technician'}
+                      <div className="truncate">
+                        <div className="font-bold text-white text-xs truncate">
+                          {t.fullName || 'Technician'}
                         </div>
-                        <div className="text-[10px] text-slate-400 font-mono mt-0.5 bg-slate-800/50 px-1.5 py-0.5 rounded inline-block">
-                          {tech.phone || 'No Contact'} <span className="text-slate-600 mx-1">•</span> {tech.currentCity || 'Gujarat'}
+                        <div className="text-[10px] text-slate-500 font-mono truncate">
+                          {t.contact || t.phone || 'No phone'} • {t.currentCity || 'Gujarat'}
                         </div>
                       </div>
                     </div>
 
-                    <span className={`px-2 py-0.5 text-[9px] font-bold tracking-widest uppercase rounded-md border ${
-                      tech.onboardingStatus === 'APPROVED' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
-                      tech.onboardingStatus === 'PENDING' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
-                      'bg-slate-800/80 text-slate-400 border-white/5'
-                    }`}>
-                      {tech.onboardingStatus ? tech.onboardingStatus.replace(/_/g, ' ') : 'SUBMITTED'}
-                    </span>
+                    <StatusBadge status={t.onboardingStatus} size="sm" />
                   </div>
                 ))
               )}
             </div>
           </div>
 
-          <div className="pt-4 mt-4 border-t border-white/5 flex items-center justify-between text-[11px]">
-            <span className="text-slate-500 font-medium">{stats.pendingCount} pending compliance verification</span>
-            <Link href="/verifications" className="font-bold tracking-wide text-slate-300 hover:text-white transition-colors">
-              Audit Pending ({stats.pendingCount}) &rarr;
+          <div className="pt-3 mt-3 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-500">
+            <span>{stats.pendingCount} pending compliance verification</span>
+            <Link href="/verifications" className="font-semibold text-slate-300 hover:text-white">
+              Open Verification Queue &rarr;
             </Link>
           </div>
         </div>
       </div>
 
-      {/* 6. Live Security & Governance Audit Stream (Platform & Security Team) */}
-      <div className={`bg-slate-900/40 backdrop-blur-xl rounded-2xl border border-white/5 shadow-lg p-5 relative z-10 ${
-        selectedDomain === 'DISPATCH' || selectedDomain === 'FINANCE' ? 'opacity-60 hover:opacity-100 transition-opacity' : ''
-      }`}>
-        <div className="flex items-center justify-between pb-4 border-b border-white/5">
-          <div className="flex items-center gap-3">
+      {/* 5. Live Security & Audit Stream */}
+      <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-slate-400" />
-            <h2 className="text-xs font-bold uppercase tracking-widest text-slate-300">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-200">
               Security & Administrative Audit Stream
             </h2>
-            <span className="text-[9px] font-bold tracking-widest uppercase px-2 py-0.5 rounded-md bg-rose-500/10 text-rose-400 border border-rose-500/20 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
-              Live Feed
+            <span className="text-[9px] font-bold font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase">
+              LIVE
             </span>
           </div>
           <Link
             href="/audit-logs"
-            className="text-[11px] font-bold tracking-wide text-slate-400 hover:text-white transition-colors inline-flex items-center gap-1"
+            className="text-[11px] font-bold text-slate-400 hover:text-white transition-colors inline-flex items-center gap-1"
           >
-            Complete Audit Log <ArrowUpRight className="w-3.5 h-3.5" />
+            Audit History <ArrowUpRight className="w-3 h-3" />
           </Link>
         </div>
 
-        <div className="divide-y divide-white/5 mt-2">
+        <div className="divide-y divide-slate-800/60 mt-1">
           {auditStream.length === 0 ? (
-            <div className="py-8 text-center text-slate-500 text-xs font-medium tracking-wide">
-              No recent audit events captured. Actions by administrators will stream here in real-time.
+            <div className="py-6 text-center text-slate-500 text-xs">
+              No recent audit events captured.
             </div>
           ) : (
             auditStream.map((event) => (
-              <div key={event.id} className="py-3 flex items-center justify-between text-xs hover:bg-white/5 px-2 -mx-2 rounded-xl transition-all cursor-default">
-                <div className="flex items-center gap-4">
-                  <span className="font-mono text-[11px] font-bold text-white bg-slate-800 px-2 py-1 rounded-md">
+              <div
+                key={event.id}
+                className="py-2.5 flex items-center justify-between text-xs hover:bg-slate-800/30 px-1 rounded transition-colors"
+              >
+                <div className="flex items-center gap-3 truncate pr-3">
+                  <span className="font-mono text-[11px] font-bold text-slate-200 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
                     {event.action}
                   </span>
-                  <span className="text-[10px] font-mono px-2 py-1 rounded-md bg-white/5 text-slate-400 font-semibold tracking-wide">
+                  <span className="text-[10px] font-mono text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded">
                     {event.resourceType}
                   </span>
-                  <span className="text-[11px] text-slate-500 font-medium hidden sm:inline">
-                    by <span className="text-slate-300">{event.user?.name || event.userPhone || 'Operator'}</span>
+                  <span className="text-slate-500 text-[11px] hidden sm:inline truncate">
+                    by {event.user?.name || event.userPhone || 'Operator'}
                   </span>
                 </div>
 
-                <div className="flex items-center gap-4">
-                  <span className={`text-[9px] font-bold tracking-widest uppercase px-2 py-1 rounded-md border ${
-                    event.status === 'SUCCESS'
-                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                      : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-                  }`}>
-                    {event.status}
-                  </span>
-                  <span className="text-[10px] text-slate-500 font-mono font-medium">
+                <div className="flex items-center gap-3 flex-shrink-0">
+                  <StatusBadge status={event.status} size="sm" />
+                  <span className="text-[10px] text-slate-500 font-mono">
                     {new Date(event.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
@@ -713,46 +578,54 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* 7. Quick Administrative Shortcuts & Guardrails */}
-      <div className="bg-gradient-to-r from-slate-900/60 to-slate-900/40 backdrop-blur-2xl rounded-2xl border border-white/5 p-5 relative z-10 shadow-lg">
-        <div className="flex items-center justify-between mb-4">
-          <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400 flex items-center gap-2">
-            <Shield className="w-4 h-4 text-slate-500" />
-            Operational Fast Paths & Security Guardrails
+      {/* 6. Operational Fast-Paths */}
+      <div className="bg-slate-900/60 rounded-xl border border-slate-800 p-4">
+        <div className="flex items-center justify-between mb-3 text-xs">
+          <span className="font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+            <Activity className="w-3.5 h-3.5 text-blue-400" />
+            Fast Paths & Emergency Operations
           </span>
-          <span className="text-[10px] text-blue-400 bg-blue-500/10 px-2 py-1 rounded-md border border-blue-500/20 font-mono font-bold tracking-widest uppercase">
+          <span className="text-[10px] font-mono text-slate-500">
             Access Role: {adminRole}
           </span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-bold tracking-wide">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+          <Link
+            href="/live-ops"
+            className="p-3 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 rounded-lg text-slate-200 transition-colors flex items-center justify-between"
+          >
+            <span className="font-semibold">Live Ops Board</span>
+            <span className="text-[10px] font-mono text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded">
+              {stats.activeBookings}
+            </span>
+          </Link>
           <Link
             href="/verifications"
-            className="group p-3 bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 rounded-xl text-white transition-all flex items-center justify-between"
+            className="p-3 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 rounded-lg text-slate-200 transition-colors flex items-center justify-between"
           >
-            <span className="group-hover:text-amber-400 transition-colors">KYC Approvals</span>
-            <span className="text-[10px] font-mono text-slate-500 bg-slate-950/50 px-2 py-0.5 rounded">{stats.pendingCount}</span>
+            <span className="font-semibold">KYC Queue</span>
+            <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">
+              {stats.pendingCount}
+            </span>
           </Link>
           <Link
-            href="/bookings"
-            className="group p-3 bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 rounded-xl text-white transition-all flex items-center justify-between"
+            href="/finance"
+            className="p-3 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 rounded-lg text-slate-200 transition-colors flex items-center justify-between"
           >
-            <span className="group-hover:text-blue-400 transition-colors">Dispatch Control</span>
-            <span className="text-[10px] font-mono text-slate-500 bg-slate-950/50 px-2 py-0.5 rounded">{stats.activeBookings}</span>
+            <span className="font-semibold">Ledger & Wallets</span>
+            <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+              ₹{(stats.totalCommission / 1000).toFixed(0)}k
+            </span>
           </Link>
           <Link
-            href="/services"
-            className="group p-3 bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 rounded-xl text-white transition-all flex items-center justify-between"
+            href="/support"
+            className="p-3 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 rounded-lg text-slate-200 transition-colors flex items-center justify-between"
           >
-            <span className="group-hover:text-indigo-400 transition-colors">Catalog Offerings</span>
-            <span className="text-[10px] font-mono text-slate-500 bg-slate-950/50 px-2 py-0.5 rounded">{stats.totalServices}</span>
-          </Link>
-          <Link
-            href="/audit-logs"
-            className="group p-3 bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 rounded-xl text-white transition-all flex items-center justify-between"
-          >
-            <span className="group-hover:text-rose-400 transition-colors">Security Logs</span>
-            <span className="text-[10px] font-mono text-rose-500/50 bg-rose-500/10 border border-rose-500/10 px-2 py-0.5 rounded uppercase">Live</span>
+            <span className="font-semibold">Support Desk</span>
+            <span className="text-[10px] font-mono text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded">
+              Inbox
+            </span>
           </Link>
         </div>
       </div>

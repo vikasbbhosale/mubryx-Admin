@@ -1,22 +1,16 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { 
-  TechnicianMock, 
-  OnboardingStatus, 
-  getStatusBadgeColor, 
-  formatDocType 
-} from '@/lib/mock-data';
-import { 
+  Users, 
   Search, 
   Filter, 
   Eye, 
   CheckCircle, 
   XCircle, 
   Clock, 
-  FileText, 
   Briefcase, 
-  X, 
   Phone, 
   Mail, 
   MapPin, 
@@ -26,269 +20,362 @@ import {
   UserCheck,
   FileCheck,
   AlertCircle,
-  Loader2
+  Loader2,
+  RefreshCw,
+  Wallet,
+  ShieldCheck,
+  ArrowUpRight
 } from 'lucide-react';
+import { StatusBadge } from '@/components/ui/StatusBadge';
+import { CaseDrawer } from '@/components/ui/CaseDrawer';
+import { DestructiveModal } from '@/components/ui/DestructiveModal';
+
+interface SkillItem {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+interface DocumentItem {
+  id: string;
+  type: string;
+  objectKey: string;
+  mimeType: string;
+  fileSize: number;
+  createdAt: string;
+}
+
+interface BankDetailsItem {
+  id: string;
+  bankName: string;
+  accountNumber: string;
+  ifsc: string;
+  accountHolder: string;
+  isVerified: boolean;
+  upiId?: string | null;
+}
+
+interface Technician {
+  id: string;
+  fullName: string | null;
+  contact?: string | null;
+  currentCity: string | null;
+  currentState?: string | null;
+  pinCode?: string | null;
+  bio?: string | null;
+  experienceYears?: number | null;
+  onboardingStatus: string;
+  isOnline?: boolean;
+  rating?: number | null;
+  totalRatings?: number;
+  createdAt: string;
+  user?: {
+    id: string;
+    phone: string;
+    name: string | null;
+    email: string | null;
+    isActive: boolean;
+  };
+  skills?: SkillItem[];
+  documents?: DocumentItem[];
+  bankDetails?: BankDetailsItem | null;
+  wallet?: { availableBalance: number };
+}
 
 export default function TechniciansPage() {
-  const [technicians, setTechnicians] = useState<TechnicianMock[]>([]);
+  const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
-  const [selectedTech, setSelectedTech] = useState<TechnicianMock | null>(null);
-  const [actionNote, setActionNote] = useState('');
+  const [selectedTech, setSelectedTech] = useState<Technician | null>(null);
+  const [techDetailLoading, setTechDetailLoading] = useState(false);
+  
+  const [suspendTarget, setSuspendTarget] = useState<Technician | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
 
-  const fetchTechnicians = async () => {
+  const fetchTechnicians = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    setRefreshing(true);
     try {
-      const res = await fetch('/api/technicians');
+      const params = new URLSearchParams();
+      if (statusFilter !== 'ALL') params.set('status', statusFilter);
+      if (search.trim()) params.set('search', search.trim());
+      params.set('limit', '50');
+
+      const res = await fetch(`/api/technicians?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
-        setTechnicians(data);
+        const items = Array.isArray(data) ? data : data?.items || [];
+        setTechnicians(items);
         if (selectedTech) {
-          const updatedSelected = data.find((t: TechnicianMock) => t.id === selectedTech.id);
-          if (updatedSelected) setSelectedTech(updatedSelected);
+          const updated = items.find((t: Technician) => t.id === selectedTech.id);
+          if (updated) setSelectedTech(updated);
         }
       }
-    } catch (error) {
-      console.error('Failed to fetch technicians', error);
+    } catch (e) {
+      console.error('Failed to load technicians', e);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  };
+  }, [statusFilter, search, selectedTech]);
 
   useEffect(() => {
     fetchTechnicians();
-  }, []);
+  }, [fetchTechnicians]);
 
-  // Status counts for quick stats
-  const countTotal = technicians.length;
-  const countSubmitted = technicians.filter(t => t.onboardingStatus === 'SUBMITTED').length;
-  const countUnderReview = technicians.filter(t => t.onboardingStatus === 'UNDER_REVIEW').length;
-  const countApproved = technicians.filter(t => t.onboardingStatus === 'APPROVED').length;
-  const countRejected = technicians.filter(t => t.onboardingStatus === 'REJECTED').length;
-  const countSuspended = technicians.filter(t => t.onboardingStatus === 'SUSPENDED').length;
-
-  // Filtering logic
-  const filteredTechnicians = technicians.filter(tech => {
-    const matchesSearch = 
-      tech.fullName.toLowerCase().includes(search.toLowerCase()) ||
-      tech.phone.includes(search) ||
-      tech.currentCity.toLowerCase().includes(search.toLowerCase()) ||
-      tech.skills.some(s => s.name.toLowerCase().includes(search.toLowerCase()));
-
-    const matchesStatus = statusFilter === 'ALL' || tech.onboardingStatus === statusFilter;
-
-    return matchesSearch && matchesStatus;
-  });
-
-  const handleUpdateStatus = async (techId: string, newStatus: OnboardingStatus, notes?: string) => {
-    const noteToSave = notes || actionNote || undefined;
-    
+  const openTechDrawer = async (tech: Technician) => {
+    setSelectedTech(tech);
+    setTechDetailLoading(true);
     try {
-      const res = await fetch(`/api/technicians/${techId}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus, reason: noteToSave })
-      });
-      
+      const res = await fetch(`/api/technicians/${tech.id}`);
       if (res.ok) {
-        await fetchTechnicians();
-        setActionNote('');
+        const full = await res.json();
+        setSelectedTech(full);
       }
-    } catch (error) {
-      console.error('Error updating status', error);
+    } catch (e) {
+      console.error('Failed to fetch full technician profile', e);
+    } finally {
+      setTechDetailLoading(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex h-[60vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-      </div>
-    );
-  }
+  const handleUpdateStatus = async (status: string, reason?: string) => {
+    if (!selectedTech && !suspendTarget) return;
+    const target = suspendTarget || selectedTech;
+    if (!target) return;
+
+    setActionLoading(true);
+    try {
+      const res = await fetch(`/api/technicians/${target.id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, reviewNotes: reason || `Status set to ${status} via Admin Console` }),
+      });
+      if (res.ok) {
+        setSuspendTarget(null);
+        fetchTechnicians();
+      }
+    } catch (e) {
+      console.error('Status update failed', e);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Status breakdown metrics
+  const countTotal = technicians.length;
+  const countApproved = technicians.filter((t) => t.onboardingStatus === 'APPROVED').length;
+  const countPending = technicians.filter((t) => ['SUBMITTED', 'UNDER_REVIEW'].includes(t.onboardingStatus)).length;
+  const countSuspended = technicians.filter((t) => t.onboardingStatus === 'SUSPENDED').length;
 
   return (
-    <div className="space-y-6 pb-12">
-      {/* Header section */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="space-y-4 pb-12">
+      {/* 1. Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Technicians Management</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            View profiles, review submitted documents, and manage technician onboarding statuses.
+          <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+            <Users className="w-5 h-5 text-emerald-500" />
+            Technician Workforce Roster
+          </h1>
+          <p className="text-xs text-slate-400 mt-1">
+            Service partner onboarding, compliance verification, and field capacity management.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="px-3 py-1 bg-blue-50 text-blue-700 text-xs font-semibold rounded-full border border-blue-200">
-            Total: {countTotal} Technicians
-          </span>
+
+        <div className="flex items-center gap-2.5 self-start sm:self-auto">
+          <button
+            onClick={() => fetchTechnicians()}
+            disabled={refreshing}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-emerald-400' : ''}`} />
+            <span>Sync</span>
+          </button>
+          <Link
+            href="/verifications"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 transition-colors"
+          >
+            <UserCheck className="w-3.5 h-3.5" />
+            <span>Review Queue ({countPending})</span>
+          </Link>
         </div>
       </div>
 
-      {/* Quick Status Stats Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
-        <button
-          onClick={() => setStatusFilter('ALL')}
-          className={`p-3 rounded-xl border text-left transition-all ${
-            statusFilter === 'ALL' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-          }`}
-        >
-          <div className="text-[11px] font-semibold opacity-80 uppercase tracking-wider">All</div>
-          <div className="text-xl font-bold mt-0.5">{countTotal}</div>
-        </button>
+      {/* 2. Workforce Metrics */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl">
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+            Total Workforce
+          </span>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="text-2xl font-black text-white font-mono">{countTotal}</span>
+            <span className="text-[10px] text-slate-500">partners</span>
+          </div>
+        </div>
 
-        <button
-          onClick={() => setStatusFilter('SUBMITTED')}
-          className={`p-3 rounded-xl border text-left transition-all ${
-            statusFilter === 'SUBMITTED' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-          }`}
-        >
-          <div className="text-[11px] font-semibold text-blue-600 uppercase tracking-wider">Submitted</div>
-          <div className="text-xl font-bold mt-0.5 text-blue-700">{countSubmitted}</div>
-        </button>
+        <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl">
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+            Approved & Field Ready
+          </span>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="text-2xl font-black text-emerald-400 font-mono">{countApproved}</span>
+            <span className="text-[10px] text-emerald-500/80">ready</span>
+          </div>
+        </div>
 
-        <button
-          onClick={() => setStatusFilter('UNDER_REVIEW')}
-          className={`p-3 rounded-xl border text-left transition-all ${
-            statusFilter === 'UNDER_REVIEW' ? 'bg-amber-600 text-white border-amber-600 shadow-sm' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-          }`}
-        >
-          <div className="text-[11px] font-semibold text-amber-600 uppercase tracking-wider">Under Review</div>
-          <div className="text-xl font-bold mt-0.5 text-amber-700">{countUnderReview}</div>
-        </button>
+        <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl">
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+            Pending KYC Audit
+          </span>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="text-2xl font-black text-amber-400 font-mono">{countPending}</span>
+            <span className="text-[10px] text-amber-500/80">awaiting</span>
+          </div>
+        </div>
 
-        <button
-          onClick={() => setStatusFilter('APPROVED')}
-          className={`p-3 rounded-xl border text-left transition-all ${
-            statusFilter === 'APPROVED' ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-          }`}
-        >
-          <div className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wider">Approved</div>
-          <div className="text-xl font-bold mt-0.5 text-emerald-700">{countApproved}</div>
-        </button>
-
-        <button
-          onClick={() => setStatusFilter('REJECTED')}
-          className={`p-3 rounded-xl border text-left transition-all ${
-            statusFilter === 'REJECTED' ? 'bg-rose-600 text-white border-rose-600 shadow-sm' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-          }`}
-        >
-          <div className="text-[11px] font-semibold text-rose-600 uppercase tracking-wider">Rejected</div>
-          <div className="text-xl font-bold mt-0.5 text-rose-700">{countRejected}</div>
-        </button>
-
-        <button
-          onClick={() => setStatusFilter('SUSPENDED')}
-          className={`p-3 rounded-xl border text-left transition-all ${
-            statusFilter === 'SUSPENDED' ? 'bg-purple-600 text-white border-purple-600 shadow-sm' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-          }`}
-        >
-          <div className="text-[11px] font-semibold text-purple-600 uppercase tracking-wider">Suspended</div>
-          <div className="text-xl font-bold mt-0.5 text-purple-700">{countSuspended}</div>
-        </button>
+        <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl">
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+            Suspended
+          </span>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="text-2xl font-black text-rose-400 font-mono">{countSuspended}</span>
+            <span className="text-[10px] text-rose-500/80">locked</span>
+          </div>
+        </div>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="bg-white p-4 rounded-xl shadow-xs border border-gray-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+      {/* 3. Filter Toolbar */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900 p-2.5 rounded-xl border border-slate-800 text-xs">
+        <div className="relative flex-1 w-full sm:w-auto">
+          <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-2.5" />
           <input
             type="text"
-            placeholder="Search technician by name, phone, city, or skill..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 placeholder-gray-400"
+            placeholder="Search technicians by name, phone, city, or skill..."
+            className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
           />
         </div>
 
-        <div className="flex items-center gap-2">
-          <Filter className="h-4 w-4 text-gray-500" />
-          <span className="text-xs font-semibold text-gray-600 uppercase">Status:</span>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="border border-gray-300 rounded-lg text-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-800"
-          >
-            <option value="ALL">All Statuses ({countTotal})</option>
-            <option value="SUBMITTED">Submitted ({countSubmitted})</option>
-            <option value="UNDER_REVIEW">Under Review ({countUnderReview})</option>
-            <option value="APPROVED">Approved ({countApproved})</option>
-            <option value="REJECTED">Rejected ({countRejected})</option>
-            <option value="SUSPENDED">Suspended ({countSuspended})</option>
-            <option value="DRAFT">Draft</option>
-          </select>
-        </div>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-blue-500 cursor-pointer w-full sm:w-auto"
+        >
+          <option value="ALL">All Statuses ({technicians.length})</option>
+          <option value="APPROVED">Approved Only</option>
+          <option value="UNDER_REVIEW">Under Review</option>
+          <option value="SUBMITTED">Submitted</option>
+          <option value="REJECTED">Rejected</option>
+          <option value="SUSPENDED">Suspended</option>
+        </select>
       </div>
 
-      {/* Technicians Data Table */}
-      <div className="bg-white shadow-xs rounded-xl border border-gray-200 overflow-hidden">
+      {/* 4. Workforce Table */}
+      <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 text-left">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Technician</th>
-                <th className="px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Location</th>
-                <th className="px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Skills</th>
-                <th className="px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Experience</th>
-                <th className="px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Documents</th>
-                <th className="px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Actions</th>
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="border-b border-slate-800 bg-slate-950/60 text-slate-400 font-semibold uppercase text-[10px] tracking-wider">
+                <th className="py-2.5 px-4">Technician</th>
+                <th className="py-2.5 px-4">Contact</th>
+                <th className="py-2.5 px-4">Location</th>
+                <th className="py-2.5 px-4">Skills</th>
+                <th className="py-2.5 px-4">Rating</th>
+                <th className="py-2.5 px-4">Compliance Status</th>
+                <th className="py-2.5 px-4 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 bg-white">
-              {filteredTechnicians.length === 0 ? (
+            <tbody className="divide-y divide-slate-800/60 text-slate-300">
+              {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
-                    No technicians found matching your criteria.
+                  <td colSpan={7} className="py-12 text-center text-slate-500">
+                    <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2 text-emerald-500" />
+                    <span>Loading technician profiles...</span>
+                  </td>
+                </tr>
+              ) : technicians.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center text-slate-500">
+                    No technician records match current criteria.
                   </td>
                 </tr>
               ) : (
-                filteredTechnicians.map((tech) => (
-                  <tr key={tech.id} className="hover:bg-gray-50/80 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={tech.profilePhoto}
-                          alt={tech.fullName}
-                          className="h-10 w-10 rounded-full object-cover border border-gray-200"
-                        />
-                        <div>
-                          <div className="text-sm font-semibold text-gray-900">{tech.fullName}</div>
-                          <div className="text-xs text-gray-500">{tech.phone}</div>
+                technicians.map((t) => (
+                  <tr
+                    key={t.id}
+                    onClick={() => openTechDrawer(t)}
+                    className="hover:bg-slate-800/50 transition-colors cursor-pointer group"
+                  >
+                    <td className="py-2.5 px-4">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-7 h-7 rounded-md bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-slate-300 text-xs flex-shrink-0">
+                          {t.fullName?.charAt(0) || 'T'}
+                        </div>
+                        <div className="truncate">
+                          <span className="font-semibold text-white block truncate">
+                            {t.fullName || 'Technician'}
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-mono block">
+                            {t.experienceYears ? `${t.experienceYears} yrs exp` : 'Entry Level'}
+                          </span>
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{tech.currentCity}</div>
-                      <div className="text-xs text-gray-500">PIN: {tech.pinCode}</div>
+
+                    <td className="py-2.5 px-4 font-mono text-slate-300">
+                      {t.contact || t.user?.phone || 'No Contact'}
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-wrap gap-1 max-w-xs">
-                        {tech.skills.map((skill) => (
-                          <span key={skill.id} className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs rounded font-medium">
-                            {skill.name}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                      {tech.experienceYears} Years
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2.5 py-1 text-xs font-medium rounded-full border ${getStatusBadgeColor(tech.onboardingStatus)}`}>
-                        {tech.onboardingStatus.replace('_', ' ')}
+
+                    <td className="py-2.5 px-4 text-slate-400">
+                      <span className="block font-medium text-slate-300 truncate">
+                        {t.currentCity || 'Gujarat'}
+                      </span>
+                      <span className="text-[11px] text-slate-500 font-mono block">
+                        {t.pinCode || 'No PIN'}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-xs text-gray-600 font-medium">
-                        {tech.documents.length} Uploaded
-                      </div>
+
+                    <td className="py-2.5 px-4 max-w-[200px] truncate">
+                      {t.skills && t.skills.length > 0 ? (
+                        <div className="flex items-center gap-1 truncate">
+                          {t.skills.slice(0, 2).map((s) => (
+                            <span
+                              key={s.id}
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 truncate"
+                            >
+                              {s.name}
+                            </span>
+                          ))}
+                          {t.skills.length > 2 && (
+                            <span className="text-[10px] text-slate-500">
+                              +{t.skills.length - 2}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-slate-600 text-[11px]">No skills listed</span>
+                      )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+
+                    <td className="py-2.5 px-4 font-mono">
+                      <span className="text-amber-400 font-bold">
+                        ★ {t.rating ? t.rating.toFixed(1) : '5.0'}
+                      </span>
+                    </td>
+
+                    <td className="py-2.5 px-4 whitespace-nowrap">
+                      <StatusBadge status={t.onboardingStatus} size="sm" />
+                    </td>
+
+                    <td className="py-2.5 px-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                       <button
-                        onClick={() => setSelectedTech(tech)}
-                        className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors"
+                        onClick={() => openTechDrawer(t)}
+                        className="px-2.5 py-1 text-xs font-semibold rounded bg-slate-800 hover:bg-emerald-600 text-slate-200 hover:text-white transition-colors cursor-pointer"
                       >
-                        <Eye className="w-3.5 h-3.5" /> View Details
+                        Profile
                       </button>
                     </td>
                   </tr>
@@ -299,196 +386,126 @@ export default function TechniciansPage() {
         </div>
       </div>
 
-      {/* Technician Detail Modal */}
-      {selectedTech && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-200">
-            {/* Modal Header */}
-            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
-              <div className="flex items-center gap-3">
-                <img
-                  src={selectedTech.profilePhoto}
-                  alt={selectedTech.fullName}
-                  className="w-12 h-12 rounded-full object-cover border"
-                />
+      {/* 5. Slide-Over Profile Case Drawer */}
+      <CaseDrawer
+        isOpen={!!selectedTech}
+        onClose={() => setSelectedTech(null)}
+        title={selectedTech?.fullName || 'Technician Profile'}
+        subtitle={selectedTech?.currentCity || 'Gujarat Region'}
+        badge={selectedTech && <StatusBadge status={selectedTech.onboardingStatus} size="sm" />}
+        footer={
+          selectedTech && (
+            <>
+              {selectedTech.onboardingStatus !== 'APPROVED' && (
+                <button
+                  onClick={() => handleUpdateStatus('APPROVED')}
+                  className="px-3.5 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors cursor-pointer"
+                >
+                  Approve Application
+                </button>
+              )}
+              {selectedTech.onboardingStatus !== 'SUSPENDED' && (
+                <button
+                  onClick={() => setSuspendTarget(selectedTech)}
+                  className="px-3 py-1.5 text-xs font-bold text-rose-400 hover:bg-rose-500/10 border border-rose-500/30 rounded-lg transition-colors cursor-pointer"
+                >
+                  Suspend Partner
+                </button>
+              )}
+              <button
+                onClick={() => setSelectedTech(null)}
+                className="px-3.5 py-1.5 text-xs font-medium text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            </>
+          )
+        }
+      >
+        {techDetailLoading ? (
+          <div className="py-16 text-center text-slate-500">
+            <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-emerald-500" />
+            <span>Loading complete partner portfolio...</span>
+          </div>
+        ) : selectedTech && (
+          <div className="space-y-5">
+            {/* Primary Details */}
+            <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-2">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                Contact & Identity
+              </span>
+              <div className="grid grid-cols-2 gap-2 text-xs">
                 <div>
-                  <h2 className="text-lg font-bold text-gray-900">{selectedTech.fullName}</h2>
-                  <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${getStatusBadgeColor(selectedTech.onboardingStatus)}`}>
-                    {selectedTech.onboardingStatus.replace('_', ' ')}
-                  </span>
+                  <span className="text-slate-500 block">Phone</span>
+                  <span className="text-white font-mono">{selectedTech.contact || selectedTech.user?.phone || 'No phone'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Email</span>
+                  <span className="text-white truncate block">{selectedTech.user?.email || 'No email on file'}</span>
                 </div>
               </div>
-              <button
-                onClick={() => {
-                  setSelectedTech(null);
-                  setActionNote('');
-                }}
-                aria-label="Close details modal"
-                className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100"
-              >
-                <X className="w-5 h-5" />
-              </button>
             </div>
 
-            {/* Modal Body */}
-            <div className="p-6 space-y-6">
-              {/* Profile Overview Card */}
-              <div className="bg-gray-50 rounded-xl p-4 border border-gray-200 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-                <div className="flex items-center gap-2">
-                  <Phone className="w-4 h-4 text-gray-400" />
-                  <div>
-                    <div className="text-xs text-gray-500">Phone</div>
-                    <div className="font-semibold text-gray-900">{selectedTech.phone}</div>
-                  </div>
+            {/* Bank Details */}
+            <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-2 text-xs">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                Banking & Payout Account
+              </span>
+              {selectedTech.bankDetails ? (
+                <div className="space-y-1 font-mono text-slate-300">
+                  <p>Bank: <span className="text-white font-bold">{selectedTech.bankDetails.bankName}</span></p>
+                  <p>Account: <span className="text-white">{selectedTech.bankDetails.accountNumber}</span></p>
+                  <p>IFSC: <span className="text-white">{selectedTech.bankDetails.ifsc}</span></p>
+                  <p>Holder: <span className="text-white">{selectedTech.bankDetails.accountHolder}</span></p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-gray-400" />
-                  <div>
-                    <div className="text-xs text-gray-500">Email</div>
-                    <div className="font-semibold text-gray-900">{selectedTech.email}</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-gray-400" />
-                  <div>
-                    <div className="text-xs text-gray-500">City & PIN</div>
-                    <div className="font-semibold text-gray-900">{selectedTech.currentCity} ({selectedTech.pinCode})</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-gray-400" />
-                  <div>
-                    <div className="text-xs text-gray-500">Date of Birth & Gender</div>
-                    <div className="font-semibold text-gray-900">{selectedTech.dateOfBirth} ({selectedTech.gender})</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Award className="w-4 h-4 text-gray-400" />
-                  <div>
-                    <div className="text-xs text-gray-500">Experience</div>
-                    <div className="font-semibold text-gray-900">{selectedTech.experienceYears} Years</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-gray-400" />
-                  <div>
-                    <div className="text-xs text-gray-500">Submitted At</div>
-                    <div className="font-semibold text-gray-900">
-                      {selectedTech.submittedAt ? new Date(selectedTech.submittedAt).toLocaleDateString() : 'N/A'}
-                    </div>
-                  </div>
-                </div>
-              </div>
+              ) : (
+                <p className="text-slate-500">No bank account registered.</p>
+              )}
+            </div>
 
-              {/* Bio */}
-              <div>
-                <h4 className="text-xs font-semibold uppercase text-gray-500 tracking-wider mb-2">Professional Bio</h4>
-                <p className="text-sm text-gray-700 bg-white p-3 rounded-lg border border-gray-200">
-                  {selectedTech.bio || 'No bio provided.'}
-                </p>
-              </div>
-
-              {/* Skills */}
-              <div>
-                <h4 className="text-xs font-semibold uppercase text-gray-500 tracking-wider mb-2">Skills & Services</h4>
-                <div className="flex flex-wrap gap-2">
-                  {selectedTech.skills.map(s => (
-                    <div key={s.id} className="bg-blue-50 border border-blue-200 rounded-lg p-2.5 text-xs">
-                      <div className="font-bold text-blue-900">{s.name}</div>
-                      <div className="text-blue-700 text-[11px] mt-0.5">{s.description}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Work Experience */}
-              <div>
-                <h4 className="text-xs font-semibold uppercase text-gray-500 tracking-wider mb-2 flex items-center gap-1.5">
-                  <Briefcase className="w-4 h-4 text-gray-500" /> Work History
-                </h4>
-                <div className="space-y-2">
-                  {selectedTech.experiences.map(exp => (
-                    <div key={exp.id} className="p-3 border rounded-lg bg-gray-50 text-xs">
-                      <div className="flex justify-between font-bold text-gray-900">
-                        <span>{exp.role} @ {exp.companyName}</span>
-                        <span className="text-gray-500">{exp.startDate} - {exp.endDate}</span>
-                      </div>
-                      {exp.responsibilities && (
-                        <p className="mt-1 text-gray-600">{exp.responsibilities}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Uploaded Documents */}
-              <div>
-                <h4 className="text-xs font-semibold uppercase text-gray-500 tracking-wider mb-2 flex items-center gap-1.5">
-                  <FileText className="w-4 h-4 text-gray-500" /> Submitted Verification Documents
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {selectedTech.documents.map(doc => (
-                    <div key={doc.id} className="p-3 border rounded-lg bg-white flex items-center justify-between text-xs">
-                      <div>
-                        <div className="font-bold text-gray-900">{formatDocType(doc.type)}</div>
-                        <div className="text-gray-500">{doc.documentNumber || doc.objectKey}</div>
-                      </div>
-                      <span className={`px-2 py-0.5 font-semibold text-[11px] rounded ${
-                        doc.status === 'VERIFIED' ? 'bg-emerald-100 text-emerald-700' :
-                        doc.status === 'REJECTED' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'
-                      }`}>
-                        {doc.status}
+            {/* Documents List */}
+            <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-2.5 text-xs">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                KYC Documents on File
+              </span>
+              <div className="space-y-1.5">
+                {!selectedTech.documents || selectedTech.documents.length === 0 ? (
+                  <p className="text-slate-500">No identity documents submitted.</p>
+                ) : (
+                  selectedTech.documents.map((doc) => (
+                    <div
+                      key={doc.id}
+                      className="flex items-center justify-between p-2 rounded bg-slate-900 border border-slate-800 text-xs"
+                    >
+                      <span className="font-mono text-slate-200">{doc.type}</span>
+                      <span className="text-[10px] text-slate-500 font-mono">
+                        {(doc.fileSize / 1024).toFixed(0)} KB
                       </span>
                     </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Review Notes Input */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
-                  Admin Decision Note
-                </label>
-                <input
-                  type="text"
-                  value={actionNote}
-                  onChange={(e) => setActionNote(e.target.value)}
-                  placeholder="E.g., Approved after background check, or Reason for rejection/suspension..."
-                  className="w-full border border-gray-300 rounded-lg p-2.5 text-xs text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
-
-              {/* Status Update Actions */}
-              <div className="pt-4 border-t border-gray-200 flex flex-wrap gap-2 justify-end">
-                <button
-                  onClick={() => handleUpdateStatus(selectedTech.id, 'APPROVED')}
-                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5"
-                >
-                  <CheckCircle className="w-4 h-4" /> Approve Technician
-                </button>
-                <button
-                  onClick={() => handleUpdateStatus(selectedTech.id, 'UNDER_REVIEW')}
-                  className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5"
-                >
-                  <Clock className="w-4 h-4" /> Put Under Review
-                </button>
-                <button
-                  onClick={() => handleUpdateStatus(selectedTech.id, 'REJECTED')}
-                  className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5"
-                >
-                  <XCircle className="w-4 h-4" /> Reject Application
-                </button>
-                <button
-                  onClick={() => handleUpdateStatus(selectedTech.id, 'SUSPENDED')}
-                  className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5"
-                >
-                  <Ban className="w-4 h-4" /> Suspend Technician
-                </button>
+                  ))
+                )}
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </CaseDrawer>
+
+      {/* Suspend Confirmation Modal */}
+      <DestructiveModal
+        isOpen={!!suspendTarget}
+        onClose={() => setSuspendTarget(null)}
+        onConfirm={(reason) => handleUpdateStatus('SUSPENDED', reason)}
+        title={`Suspend Technician ${suspendTarget?.fullName}`}
+        description="Suspending will immediately lock this technician from accepting new orders and stop field matching."
+        confirmKeyword="SUSPEND"
+        confirmText="Suspend Technician"
+        isLoading={actionLoading}
+        consequences={[
+          'Technician will be disconnected from the active job dispatch pool',
+          'Future dispatches assigned to this technician will be released',
+          'A security audit event will be recorded with your administrator ID',
+        ]}
+      />
     </div>
   );
 }

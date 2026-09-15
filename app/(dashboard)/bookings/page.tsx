@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { 
   CalendarCheck, 
   Search, 
@@ -11,17 +12,23 @@ import {
   User, 
   Wrench, 
   CreditCard, 
-  Key, 
   CheckCircle2, 
   XCircle, 
   AlertCircle, 
   Eye, 
   Loader2, 
   ChevronRight,
-  ShieldCheck,
-  Send,
-  X
+  ShieldCheck, 
+  RefreshCw,
+  MoreVertical,
+  X,
+  FileText,
+  DollarSign,
+  ArrowUpRight
 } from 'lucide-react';
+import { StatusBadge } from '@/components/ui/StatusBadge';
+import { CaseDrawer } from '@/components/ui/CaseDrawer';
+import { DestructiveModal } from '@/components/ui/DestructiveModal';
 
 interface BookingItem {
   id: string;
@@ -30,17 +37,35 @@ interface BookingItem {
   unitPrice: number;
   lineTotal: number;
   status: string;
+  durationSnapshot?: string;
+  service?: { id: string; title: string; price: number; image?: string };
 }
 
 interface DispatchItem {
   id: string;
   status: string;
   distanceKm: number;
+  technician?: {
+    id: string;
+    fullName: string | null;
+    currentCity: string | null;
+    user?: { phone: string };
+  };
   technician_profiles?: {
     id: string;
     fullName: string | null;
     contact: string | null;
   };
+}
+
+interface StatusHistoryItem {
+  id: string;
+  fromStatus: string | null;
+  toStatus: string;
+  changedBy: string | null;
+  changedByType: string | null;
+  reason: string | null;
+  createdAt: string;
 }
 
 interface Booking {
@@ -67,561 +92,538 @@ interface Booking {
   happyCode: string | null;
   customerNotes: string | null;
   cancellationReason: string | null;
+  customer?: {
+    id: string;
+    name: string | null;
+    phone: string;
+    email: string | null;
+  };
   users?: {
     id: string;
     name: string | null;
     phone: string;
     email: string | null;
   };
+  technician?: {
+    id: string;
+    fullName: string | null;
+    currentCity: string | null;
+    rating: number | null;
+    user?: { phone: string };
+  } | null;
   technician_profiles?: {
     id: string;
     fullName: string | null;
     contact: string | null;
     rating: number | null;
   } | null;
-  booking_items: BookingItem[];
-  booking_dispatches: DispatchItem[];
+  items?: BookingItem[];
+  booking_items?: BookingItem[];
+  dispatches?: DispatchItem[];
+  booking_dispatches?: DispatchItem[];
+  statusHistory?: StatusHistoryItem[];
 }
 
 export default function BookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
+  const [activeTab, setActiveTab] = useState<'ALL' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED'>('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [drawerBookingDetail, setDrawerBookingDetail] = useState<Booking | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  
+  const [cancelTarget, setCancelTarget] = useState<Booking | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
-  const [cancelReason, setCancelReason] = useState('');
-  const [showCancelModal, setShowCancelModal] = useState(false);
 
-  const fetchBookings = async () => {
+  const fetchBookings = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    setRefreshing(true);
     try {
-      setLoading(true);
-      const queryParams = new URLSearchParams();
-      if (statusFilter !== 'ALL') queryParams.append('status', statusFilter);
-      if (search) queryParams.append('search', search);
+      const params = new URLSearchParams();
+      if (activeTab === 'ACTIVE') params.set('tab', 'active');
+      else if (activeTab === 'COMPLETED') params.set('tab', 'completed');
+      else if (activeTab === 'CANCELLED') params.set('tab', 'cancelled');
 
-      const res = await fetch(`/api/bookings?${queryParams.toString()}`);
+      if (statusFilter !== 'ALL') params.set('status', statusFilter);
+      if (search.trim()) params.set('search', search.trim());
+      params.set('limit', '50');
+
+      const res = await fetch(`/api/bookings?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
-        setBookings(data);
+        const items = Array.isArray(data) ? data : data?.items || [];
+        setBookings(items);
+
         if (selectedBooking) {
-          const updated = data.find((b: Booking) => b.id === selectedBooking.id);
+          const updated = items.find((b: Booking) => b.id === selectedBooking.id);
           if (updated) setSelectedBooking(updated);
         }
       }
-    } catch (error) {
-      console.error('Error fetching bookings:', error);
+    } catch (e) {
+      console.error('Error loading bookings', e);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  };
+  }, [activeTab, statusFilter, search, selectedBooking]);
 
   useEffect(() => {
     fetchBookings();
-  }, [statusFilter]);
+  }, [fetchBookings]);
 
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    fetchBookings();
+  // When a booking is selected for detailed inspection, fetch full booking details
+  const openBookingDrawer = async (b: Booking) => {
+    setSelectedBooking(b);
+    setDrawerBookingDetail(b);
+    setDetailLoading(true);
+    try {
+      const res = await fetch(`/api/bookings/${b.id}`);
+      if (res.ok) {
+        const full = await res.json();
+        setDrawerBookingDetail(full);
+      }
+    } catch (e) {
+      console.error('Failed to load full booking details', e);
+    } finally {
+      setDetailLoading(false);
+    }
   };
 
-  const handleUpdateStatus = async (bookingId: string, newStatus: string, reason?: string) => {
+  const handleCancelBooking = async (reason: string) => {
+    if (!cancelTarget) return;
+    setActionLoading(true);
     try {
-      setActionLoading(true);
-      const res = await fetch(`/api/bookings/${bookingId}/status`, {
+      const res = await fetch(`/api/bookings/${cancelTarget.id}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus, reason: reason || cancelReason })
+        body: JSON.stringify({ status: 'CANCELLED', reason }),
       });
-
       if (res.ok) {
-        setShowCancelModal(false);
-        setCancelReason('');
-        await fetchBookings();
-      } else {
-        const err = await res.json();
-        alert(err.message || 'Failed to update booking status');
+        setCancelTarget(null);
+        if (selectedBooking?.id === cancelTarget.id) {
+          setSelectedBooking(null);
+          setDrawerBookingDetail(null);
+        }
+        fetchBookings();
       }
-    } catch (error) {
-      console.error('Failed to update status', error);
-      alert('Network error updating status');
+    } catch (e) {
+      console.error('Error cancelling booking', e);
     } finally {
       setActionLoading(false);
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'COMPLETED':
-        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-      case 'SERVICE_STARTED':
-      case 'TECHNICIAN_ARRIVED':
-        return 'bg-indigo-50 text-indigo-700 border-indigo-200';
-      case 'TECHNICIAN_ASSIGNED':
-      case 'TECHNICIAN_ACCEPTED':
-        return 'bg-blue-50 text-blue-700 border-blue-200';
-      case 'TECHNICIAN_SEARCHING':
-      case 'PENDING_MATCHING':
-        return 'bg-amber-50 text-amber-700 border-amber-200';
-      case 'CANCELLED':
-      case 'FAILED':
-        return 'bg-rose-50 text-rose-700 border-rose-200';
-      default:
-        return 'bg-slate-50 text-slate-700 border-slate-200';
-    }
-  };
-
-  const totalCount = bookings.length;
-  const searchingCount = bookings.filter(b => b.status === 'TECHNICIAN_SEARCHING' || b.status === 'PENDING_MATCHING').length;
-  const activeCount = bookings.filter(b => ['TECHNICIAN_ASSIGNED', 'TECHNICIAN_ACCEPTED', 'TECHNICIAN_ON_THE_WAY', 'TECHNICIAN_ARRIVED', 'SERVICE_STARTED'].includes(b.status)).length;
-  const completedCount = bookings.filter(b => b.status === 'COMPLETED').length;
+  const rawItems = drawerBookingDetail?.items || drawerBookingDetail?.booking_items || [];
+  const rawDispatches = drawerBookingDetail?.dispatches || drawerBookingDetail?.booking_dispatches || [];
+  const rawHistory = drawerBookingDetail?.statusHistory || [];
+  const customer = drawerBookingDetail?.customer || drawerBookingDetail?.users;
+  const technician = drawerBookingDetail?.technician || drawerBookingDetail?.technician_profiles;
 
   return (
-    <div className="space-y-6 pb-16">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="space-y-4 pb-12">
+      {/* 1. Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Bookings & Dispatch</h1>
-            <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-              Live Orders
-            </span>
-          </div>
-          <p className="mt-1 text-sm text-slate-500">
-            Real-time tracking of customer bookings, technician dispatches, OTPs, and payment settlements.
+          <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+            <CalendarCheck className="w-5 h-5 text-blue-500" />
+            Orders & Dispatches
+          </h1>
+          <p className="text-xs text-slate-400 mt-1">
+            Authoritative lifecycle control, fulfillment tracking, and dispute intervention.
           </p>
         </div>
-      </div>
 
-      {/* KPI Stats Bar */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
-          <div className="text-xs font-medium text-slate-500 uppercase tracking-wider">Total Orders</div>
-          <div className="text-2xl font-bold text-slate-900 mt-1">{totalCount}</div>
-        </div>
-        <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
-          <div className="text-xs font-medium text-amber-600 uppercase tracking-wider">Searching Technician</div>
-          <div className="text-2xl font-bold text-amber-600 mt-1">{searchingCount}</div>
-        </div>
-        <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
-          <div className="text-xs font-medium text-blue-600 uppercase tracking-wider">In Progress</div>
-          <div className="text-2xl font-bold text-blue-600 mt-1">{activeCount}</div>
-        </div>
-        <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
-          <div className="text-xs font-medium text-emerald-600 uppercase tracking-wider">Completed</div>
-          <div className="text-2xl font-bold text-emerald-600 mt-1">{completedCount}</div>
+        <div className="flex items-center gap-2.5 self-start sm:self-auto">
+          <button
+            onClick={() => fetchBookings()}
+            disabled={refreshing}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-blue-400' : ''}`} />
+            <span>Sync</span>
+          </button>
+          <Link
+            href="/live-ops"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors cursor-pointer"
+          >
+            <span>Live Ops Board</span>
+          </Link>
         </div>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
-        {/* Status Filters */}
-        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-          {[
-            { label: 'All Orders', val: 'ALL' },
-            { label: 'Searching Tech', val: 'TECHNICIAN_SEARCHING' },
-            { label: 'Assigned', val: 'TECHNICIAN_ASSIGNED' },
-            { label: 'Started', val: 'SERVICE_STARTED' },
-            { label: 'Completed', val: 'COMPLETED' },
-            { label: 'Cancelled', val: 'CANCELLED' },
-          ].map(tab => (
+      {/* 2. Operational Filter Tabs & Search Bar */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-900 p-3 rounded-xl border border-slate-800">
+        {/* Status Tabs */}
+        <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs">
+          {(['ALL', 'ACTIVE', 'COMPLETED', 'CANCELLED'] as const).map((tab) => (
             <button
-              key={tab.val}
-              onClick={() => setStatusFilter(tab.val)}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all cursor-pointer ${
-                statusFilter === tab.val
-                  ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                  : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+              key={tab}
+              onClick={() => {
+                setActiveTab(tab);
+                setStatusFilter('ALL');
+              }}
+              className={`px-3 py-1 rounded-md font-semibold transition-colors cursor-pointer ${
+                activeTab === tab
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              {tab.label}
+              {tab.charAt(0) + tab.slice(1).toLowerCase()}
             </button>
           ))}
         </div>
 
-        {/* Search */}
-        <form onSubmit={handleSearchSubmit} className="relative w-full md:w-72 flex items-center">
-          <Search className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
-          <input
-            type="text"
-            placeholder="Search booking, customer, city..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 text-xs font-medium rounded-xl pl-9 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
-          />
-          {search && (
-            <button
-              type="button"
-              onClick={() => { setSearch(''); fetchBookings(); }}
-              className="absolute right-2 text-slate-400 hover:text-slate-600"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          )}
-        </form>
+        {/* Search & Fine Filter */}
+        <div className="flex items-center gap-2 flex-1 max-w-md">
+          <div className="relative flex-1">
+            <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-2.5" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by order #, customer, phone..."
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+            />
+          </div>
+
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-blue-500 cursor-pointer"
+          >
+            <option value="ALL">All Statuses</option>
+            <option value="PENDING_MATCHING">Searching</option>
+            <option value="TECHNICIAN_ASSIGNED">Assigned</option>
+            <option value="TECHNICIAN_ON_THE_WAY">On The Way</option>
+            <option value="SERVICE_STARTED">In Progress</option>
+            <option value="COMPLETED">Completed</option>
+            <option value="CANCELLED">Cancelled</option>
+          </select>
+        </div>
       </div>
 
-      {/* Bookings Table */}
-      {loading ? (
-        <div className="bg-white rounded-xl border border-slate-200 p-16 flex items-center justify-center">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-        </div>
-      ) : bookings.length === 0 ? (
-        <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
-          <CalendarCheck className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-          <h3 className="text-base font-bold text-slate-800">No Bookings Found</h3>
-          <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
-            No bookings matched the selected status or search criteria.
-          </p>
-        </div>
-      ) : (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-semibold text-[11px] tracking-wider">
+      {/* 3. High-Density Operational Table */}
+      <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xs">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="border-b border-slate-800 bg-slate-950/60 text-slate-400 font-semibold uppercase text-[10px] tracking-wider">
+                <th className="py-2.5 px-4">Order ID</th>
+                <th className="py-2.5 px-4">Customer</th>
+                <th className="py-2.5 px-4">Location</th>
+                <th className="py-2.5 px-4">Technician</th>
+                <th className="py-2.5 px-4">Status</th>
+                <th className="py-2.5 px-4">Payment</th>
+                <th className="py-2.5 px-4 text-right">Amount</th>
+                <th className="py-2.5 px-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60 text-slate-300">
+              {loading ? (
                 <tr>
-                  <th className="px-5 py-3.5">Booking No. & Type</th>
-                  <th className="px-5 py-3.5">Customer</th>
-                  <th className="px-5 py-3.5">Location Snapshot</th>
-                  <th className="px-5 py-3.5">Items & Amount</th>
-                  <th className="px-5 py-3.5">Technician</th>
-                  <th className="px-5 py-3.5">OTP & Security</th>
-                  <th className="px-5 py-3.5">Status</th>
-                  <th className="px-5 py-3.5 text-right">Actions</th>
+                  <td colSpan={8} className="py-12 text-center text-slate-500">
+                    <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2 text-blue-500" />
+                    <span>Loading operational orders...</span>
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                {bookings.map((b) => (
-                  <tr key={b.id} className="hover:bg-slate-50/70 transition-colors">
-                    {/* Booking No */}
-                    <td className="px-5 py-4 whitespace-nowrap">
-                      <div className="font-bold text-slate-900 font-mono text-[13px]">
+              ) : bookings.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-slate-500">
+                    No orders match your filter criteria.
+                  </td>
+                </tr>
+              ) : (
+                bookings.map((b) => {
+                  const cust = b.customer || b.users;
+                  const tech = b.technician || b.technician_profiles;
+                  return (
+                    <tr
+                      key={b.id}
+                      onClick={() => openBookingDrawer(b)}
+                      className="hover:bg-slate-800/50 transition-colors cursor-pointer group"
+                    >
+                      <td className="py-2.5 px-4 font-mono font-bold text-white whitespace-nowrap">
                         {b.bookingNumber}
-                      </div>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${b.bookingType === 'ASAP' ? 'bg-amber-100 text-amber-800' : 'bg-purple-100 text-purple-800'}`}>
-                          {b.bookingType}
+                      </td>
+
+                      <td className="py-2.5 px-4 max-w-[160px] truncate">
+                        <span className="font-semibold text-slate-200 block truncate">
+                          {cust?.name || 'Customer'}
                         </span>
-                        <span className="text-[11px] text-slate-400">
-                          {new Date(b.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                        <span className="text-[11px] text-slate-500 font-mono block truncate">
+                          {cust?.phone || 'No phone'}
                         </span>
-                      </div>
-                    </td>
+                      </td>
 
-                    {/* Customer */}
-                    <td className="px-5 py-4 whitespace-nowrap">
-                      <div className="font-bold text-slate-900">{b.users?.name || 'Customer'}</div>
-                      <div className="text-[11px] text-slate-500 font-mono mt-0.5">
-                        {b.users?.phone}
-                      </div>
-                    </td>
+                      <td className="py-2.5 px-4 max-w-[160px] truncate text-slate-400">
+                        <span className="truncate block font-medium text-slate-300">
+                          {b.snapshotCity || 'Gujarat'}
+                        </span>
+                        <span className="text-[11px] text-slate-500 truncate block">
+                          {b.snapshotAddress || 'Address'}
+                        </span>
+                      </td>
 
-                    {/* Location */}
-                    <td className="px-5 py-4 max-w-[200px]">
-                      <div className="truncate text-slate-800 font-medium" title={b.snapshotAddress}>
-                        {b.snapshotAddress}
-                      </div>
-                      <div className="text-[11px] text-slate-400 mt-0.5">
-                        {b.snapshotCity || 'Ahmedabad'}, {b.snapshotPostalCode}
-                      </div>
-                    </td>
-
-                    {/* Items & Amount */}
-                    <td className="px-5 py-4 whitespace-nowrap">
-                      <div className="font-bold text-slate-900 text-sm">
-                        ₹{b.totalAmount.toFixed(2)}
-                      </div>
-                      <div className="text-[11px] text-slate-500 mt-0.5 truncate max-w-[140px]">
-                        {b.booking_items.length} item(s): {b.booking_items[0]?.serviceTitleSnapshot}
-                      </div>
-                    </td>
-
-                    {/* Technician */}
-                    <td className="px-5 py-4 whitespace-nowrap">
-                      {b.technician_profiles ? (
-                        <div>
-                          <div className="font-bold text-slate-900">
-                            {b.technician_profiles.fullName || 'Assigned Tech'}
+                      <td className="py-2.5 px-4 max-w-[150px] truncate">
+                        {tech?.fullName ? (
+                          <div>
+                            <span className="text-slate-200 font-medium block truncate">
+                              {tech.fullName}
+                            </span>
+                            <span className="text-[10px] text-blue-400 font-mono block">
+                              Assigned
+                            </span>
                           </div>
-                          <div className="text-[11px] text-slate-500 font-mono mt-0.5">
-                            {b.technician_profiles.contact}
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1.5 text-amber-600 font-medium">
-                          <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
-                          <span>Searching...</span>
-                        </div>
-                      )}
-                    </td>
+                        ) : (
+                          <span className="text-amber-400/80 font-mono text-[11px]">
+                            Unassigned
+                          </span>
+                        )}
+                      </td>
 
-                    {/* OTP */}
-                    <td className="px-5 py-4 whitespace-nowrap">
-                      {b.otp ? (
-                        <div className="inline-flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded text-slate-800 font-mono text-xs font-bold border border-slate-200">
-                          <Key className="w-3 h-3 text-blue-600" />
-                          OTP: {b.otp}
-                        </div>
-                      ) : (
-                        <span className="text-slate-400 text-xs">-</span>
-                      )}
-                      {b.happyCode && (
-                        <div className="text-[10px] text-emerald-600 font-mono mt-0.5">
-                          Happy Code: {b.happyCode}
-                        </div>
-                      )}
-                    </td>
+                      <td className="py-2.5 px-4 whitespace-nowrap">
+                        <StatusBadge status={b.status} size="sm" />
+                      </td>
 
-                    {/* Status */}
-                    <td className="px-5 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${getStatusBadge(b.status)}`}>
-                        {b.status.replace(/_/g, ' ')}
-                      </span>
-                    </td>
+                      <td className="py-2.5 px-4 whitespace-nowrap font-mono text-[11px]">
+                        <span className={`px-1.5 py-0.5 rounded border text-[10px] font-bold ${
+                          b.paymentStatus === 'PAID'
+                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                            : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                        }`}>
+                          {b.paymentStatus}
+                        </span>
+                      </td>
 
-                    {/* Actions */}
-                    <td className="px-5 py-4 whitespace-nowrap text-right">
-                      <button
-                        onClick={() => setSelectedBooking(b)}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-bold transition-colors cursor-pointer border border-blue-200"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        Inspect
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                      <td className="py-2.5 px-4 text-right font-mono font-bold text-white whitespace-nowrap">
+                        ₹{(b.totalAmount ?? 0).toFixed(0)}
+                      </td>
+
+                      <td className="py-2.5 px-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => openBookingDrawer(b)}
+                          className="px-2.5 py-1 text-xs font-semibold rounded bg-slate-800 hover:bg-blue-600 text-slate-200 hover:text-white transition-colors cursor-pointer"
+                        >
+                          Inspect
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
-      )}
 
-      {/* Inspect Booking Modal */}
-      {selectedBooking && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-100">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50/50">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-lg font-bold text-slate-900 font-mono">
-                    {selectedBooking.bookingNumber}
-                  </h3>
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${getStatusBadge(selectedBooking.status)}`}>
-                    {selectedBooking.status.replace(/_/g, ' ')}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 mt-1">
-                  Placed on {new Date(selectedBooking.createdAt).toLocaleString('en-IN')}
-                </p>
-              </div>
+        {/* Footer Summary */}
+        <div className="px-4 py-3 border-t border-slate-800 bg-slate-950/60 flex items-center justify-between text-xs text-slate-500">
+          <span>Showing {bookings.length} order(s)</span>
+          <span className="font-mono text-[11px]">Page 1 of 1</span>
+        </div>
+      </div>
+
+      {/* 4. Slide-Over Investigation Case Drawer */}
+      <CaseDrawer
+        isOpen={!!selectedBooking}
+        onClose={() => {
+          setSelectedBooking(null);
+          setDrawerBookingDetail(null);
+        }}
+        title={drawerBookingDetail ? `Order ${drawerBookingDetail.bookingNumber}` : ''}
+        subtitle={drawerBookingDetail?.snapshotCity || 'Operations Investigation'}
+        badge={drawerBookingDetail && <StatusBadge status={drawerBookingDetail.status} size="sm" />}
+        footer={
+          drawerBookingDetail && (
+            <>
+              {drawerBookingDetail.status !== 'CANCELLED' && drawerBookingDetail.status !== 'COMPLETED' && (
+                <button
+                  onClick={() => setCancelTarget(drawerBookingDetail)}
+                  className="px-3 py-1.5 text-xs font-bold text-rose-400 hover:bg-rose-500/10 border border-rose-500/30 rounded-lg transition-colors cursor-pointer"
+                >
+                  Cancel Booking
+                </button>
+              )}
               <button
-                onClick={() => setSelectedBooking(null)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg"
+                onClick={() => {
+                  setSelectedBooking(null);
+                  setDrawerBookingDetail(null);
+                }}
+                className="px-4 py-1.5 text-xs font-bold text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                Close Drawer
               </button>
+            </>
+          )
+        }
+      >
+        {detailLoading ? (
+          <div className="py-16 text-center text-slate-500">
+            <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-blue-500" />
+            <span>Loading complete case context...</span>
+          </div>
+        ) : drawerBookingDetail && (
+          <div className="space-y-6">
+            {/* Customer Snapshot */}
+            <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  Customer Information
+                </span>
+                <span className="text-[10px] text-emerald-400 font-mono font-bold">
+                  VERIFIED CUSTOMER
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-white font-bold text-sm">{customer?.name || 'Customer'}</span>
+                <a
+                  href={`tel:${customer?.phone}`}
+                  className="font-mono text-blue-400 hover:underline flex items-center gap-1"
+                >
+                  <Phone className="w-3 h-3" />
+                  {customer?.phone || 'No phone'}
+                </a>
+              </div>
+              <div className="text-slate-400 text-xs flex items-start gap-1.5 pt-1 border-t border-slate-800/60">
+                <MapPin className="w-3.5 h-3.5 text-slate-500 flex-shrink-0 mt-0.5" />
+                <span>{drawerBookingDetail.snapshotAddress}</span>
+              </div>
             </div>
 
-            {/* Modal Body */}
-            <div className="p-6 space-y-6">
-              {/* Customer & Address */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/80">
-                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <User className="w-3.5 h-3.5 text-blue-600" />
-                    Customer Details
-                  </div>
-                  <div className="text-sm font-bold text-slate-900">
-                    {selectedBooking.users?.name || 'Customer'}
-                  </div>
-                  <div className="text-xs text-slate-600 mt-0.5">
-                    Phone: <span className="font-mono font-semibold">{selectedBooking.users?.phone}</span>
-                  </div>
-                  {selectedBooking.users?.email && (
-                    <div className="text-xs text-slate-500 mt-0.5">
-                      Email: {selectedBooking.users.email}
+            {/* Technician Snapshot */}
+            <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-2.5">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                Assigned Workforce Partner
+              </span>
+              {technician?.fullName ? (
+                <div className="space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-white font-bold block">{technician.fullName}</span>
+                      <span className="text-slate-400 font-mono text-[11px]">
+                        {(technician as any).user?.phone || (technician as any).contact || 'Field Contact'}
+                      </span>
                     </div>
-                  )}
-                </div>
-
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/80">
-                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5 text-blue-600" />
-                    Service Location
-                  </div>
-                  <div className="text-xs text-slate-800 leading-relaxed font-medium">
-                    {selectedBooking.snapshotAddress}
-                  </div>
-                  <div className="text-[11px] text-slate-500 mt-1">
-                    City: {selectedBooking.snapshotCity || 'Ahmedabad'} | PIN: {selectedBooking.snapshotPostalCode}
+                    <span className="text-amber-400 font-mono font-bold text-xs bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                      ★ {technician.rating ?? '4.8'}
+                    </span>
                   </div>
                 </div>
-              </div>
-
-              {/* Service Items */}
-              <div>
-                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-2.5">
-                  Ordered Services & Pricing
-                </h4>
-                <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100 text-xs">
-                  {selectedBooking.booking_items.map((item) => (
-                    <div key={item.id} className="p-3.5 flex items-center justify-between bg-white">
-                      <div>
-                        <div className="font-bold text-slate-900">{item.serviceTitleSnapshot}</div>
-                        <div className="text-slate-500 text-[11px]">Qty: {item.quantity} × ₹{item.unitPrice}</div>
-                      </div>
-                      <div className="font-bold text-slate-900 text-sm">
-                        ₹{item.lineTotal.toFixed(2)}
-                      </div>
-                    </div>
-                  ))}
-                  <div className="p-3.5 bg-slate-50/70 flex flex-col gap-1 text-slate-600">
-                    <div className="flex justify-between">
-                      <span>Subtotal</span>
-                      <span>₹{selectedBooking.subtotal.toFixed(2)}</span>
-                    </div>
-                    {selectedBooking.discount > 0 && (
-                      <div className="flex justify-between text-emerald-600">
-                        <span>Discount</span>
-                        <span>-₹{selectedBooking.discount.toFixed(2)}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between">
-                      <span>Tax / GST</span>
-                      <span>₹{selectedBooking.tax.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm font-bold text-slate-900 pt-1 border-t border-slate-200">
-                      <span>Total Amount</span>
-                      <span className="text-blue-600">₹{selectedBooking.totalAmount.toFixed(2)}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Security & Verification Tokens */}
-              <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-600 text-white rounded-lg">
-                    <Key className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-bold text-slate-900">Job Start OTP</div>
-                    <div className="text-lg font-extrabold font-mono text-blue-700">
-                      {selectedBooking.otp || 'N/A'}
-                    </div>
-                  </div>
-                </div>
-                {selectedBooking.happyCode && (
-                  <div>
-                    <div className="text-xs font-bold text-slate-900">Completion Happy Code</div>
-                    <div className="text-lg font-extrabold font-mono text-emerald-600">
-                      {selectedBooking.happyCode}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Dispatches */}
-              {selectedBooking.booking_dispatches && selectedBooking.booking_dispatches.length > 0 && (
-                <div>
-                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-2">
-                    Recent Dispatch Attempts
-                  </h4>
-                  <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 text-xs">
-                    {selectedBooking.booking_dispatches.map((d) => (
-                      <div key={d.id} className="p-3 flex items-center justify-between">
-                        <div>
-                          <span className="font-bold text-slate-800">
-                            {d.technician_profiles?.fullName || 'Technician'}
-                          </span>
-                          <span className="text-slate-400 ml-2">({d.distanceKm.toFixed(1)} km away)</span>
-                        </div>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
-                          {d.status}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+              ) : (
+                <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-lg text-xs text-amber-300">
+                  No technician currently locked for this dispatch.
                 </div>
               )}
+            </div>
 
-              {/* Admin Actions */}
-              <div className="pt-4 border-t border-slate-200 flex items-center justify-between gap-3">
-                <div className="flex gap-2">
-                  {selectedBooking.status !== 'CANCELLED' && selectedBooking.status !== 'COMPLETED' && (
-                    <button
-                      disabled={actionLoading}
-                      onClick={() => setShowCancelModal(true)}
-                      className="px-3.5 py-2 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-xl text-xs font-bold border border-rose-200 transition-colors cursor-pointer"
-                    >
-                      Cancel Booking
-                    </button>
-                  )}
-                  {selectedBooking.status !== 'COMPLETED' && selectedBooking.status !== 'CANCELLED' && (
-                    <button
-                      disabled={actionLoading}
-                      onClick={() => handleUpdateStatus(selectedBooking.id, 'COMPLETED')}
-                      className="px-3.5 py-2 bg-emerald-600 text-white hover:bg-emerald-700 rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
-                    >
-                      Force Complete Order
-                    </button>
-                  )}
-                </div>
+            {/* Service Items Snapshot */}
+            <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-3">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                Service Package Items
+              </span>
+              <div className="divide-y divide-slate-800/60 text-xs">
+                {rawItems.length === 0 ? (
+                  <p className="text-slate-500">No specific line items cataloged.</p>
+                ) : (
+                  rawItems.map((item) => (
+                    <div key={item.id} className="py-2 flex items-center justify-between">
+                      <div>
+                        <span className="text-white font-medium block">
+                          {item.serviceTitleSnapshot || item.service?.title || 'Service Item'}
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                          Qty: {item.quantity} • {item.durationSnapshot || '45 mins'}
+                        </span>
+                      </div>
+                      <span className="font-mono font-bold text-white">
+                        ₹{(item.lineTotal ?? 0).toFixed(0)}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
 
-                <button
-                  onClick={() => setSelectedBooking(null)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
-                >
-                  Close
-                </button>
+            {/* Financial Ledger & Pricing Breakdown */}
+            <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-2 text-xs">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
+                Financial Breakdown
+              </span>
+              <div className="flex justify-between text-slate-400">
+                <span>Subtotal</span>
+                <span className="font-mono">₹{(drawerBookingDetail.subtotal ?? 0).toFixed(0)}</span>
+              </div>
+              <div className="flex justify-between text-slate-400">
+                <span>Discount / Coupon</span>
+                <span className="font-mono text-emerald-400">-₹{(drawerBookingDetail.discount ?? 0).toFixed(0)}</span>
+              </div>
+              <div className="flex justify-between text-slate-400">
+                <span>GST Tax</span>
+                <span className="font-mono">₹{(drawerBookingDetail.tax ?? 0).toFixed(0)}</span>
+              </div>
+              <div className="flex justify-between text-white font-bold text-sm pt-2 border-t border-slate-800">
+                <span>Total Amount</span>
+                <span className="font-mono">₹{(drawerBookingDetail.totalAmount ?? 0).toFixed(0)}</span>
+              </div>
+            </div>
+
+            {/* Booking Lifecycle History Timeline */}
+            <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-3">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                Lifecycle Status Timeline
+              </span>
+              <div className="relative pl-5 space-y-4 border-l border-slate-800 text-xs">
+                {rawHistory.length === 0 ? (
+                  <div className="relative">
+                    <span className="absolute -left-[25px] top-1 w-2.5 h-2.5 rounded-full bg-blue-500" />
+                    <span className="text-white font-semibold block">{drawerBookingDetail.status}</span>
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      {new Date(drawerBookingDetail.createdAt).toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                ) : (
+                  rawHistory.map((h) => (
+                    <div key={h.id} className="relative">
+                      <span className="absolute -left-[25px] top-1 w-2.5 h-2.5 rounded-full bg-blue-500" />
+                      <div className="flex items-center gap-2">
+                        <span className="text-white font-bold">{h.toStatus.replace(/_/g, ' ')}</span>
+                        <span className="text-[9px] font-mono px-1 rounded bg-slate-800 text-slate-400 uppercase">
+                          {h.changedByType || 'SYSTEM'}
+                        </span>
+                      </div>
+                      {h.reason && (
+                        <p className="text-slate-400 text-[11px] mt-0.5">{h.reason}</p>
+                      )}
+                      <span className="text-[10px] text-slate-500 font-mono mt-0.5 block">
+                        {new Date(h.createdAt).toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </CaseDrawer>
 
-      {/* Cancel Confirmation Modal */}
-      {showCancelModal && selectedBooking && (
-        <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4">
-            <h3 className="text-base font-bold text-slate-900">
-              Confirm Booking Cancellation
-            </h3>
-            <p className="text-xs text-slate-600">
-              Are you sure you want to cancel booking <span className="font-mono font-bold">{selectedBooking.bookingNumber}</span>? Please provide a reason for the audit trail.
-            </p>
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Cancellation Reason
-              </label>
-              <textarea
-                value={cancelReason}
-                onChange={(e) => setCancelReason(e.target.value)}
-                placeholder="E.g., Customer requested cancellation, technician unavailable..."
-                className="w-full text-xs p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 focus:outline-none"
-                rows={3}
-              />
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                onClick={() => setShowCancelModal(false)}
-                className="px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg"
-              >
-                Go Back
-              </button>
-              <button
-                disabled={actionLoading || !cancelReason.trim()}
-                onClick={() => handleUpdateStatus(selectedBooking.id, 'CANCELLED')}
-                className="px-4 py-1.5 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-lg disabled:opacity-50"
-              >
-                {actionLoading ? 'Cancelling...' : 'Confirm Cancellation'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Destructive Cancel Modal */}
+      <DestructiveModal
+        isOpen={!!cancelTarget}
+        onClose={() => setCancelTarget(null)}
+        onConfirm={handleCancelBooking}
+        title={`Cancel Order ${cancelTarget?.bookingNumber}`}
+        description="Are you sure you want to cancel this booking? This will cancel all line items and emit realtime notifications."
+        confirmKeyword="CANCEL"
+        confirmText="Cancel Order"
+        isLoading={actionLoading}
+        consequences={[
+          'All pending technician dispatches will be revoked',
+          'A status audit record will be logged with your administrator identity',
+          'Customer and technician will receive push notifications',
+        ]}
+      />
     </div>
   );
 }

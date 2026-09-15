@@ -1,30 +1,32 @@
 "use client";
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, 
+  Activity, 
+  CalendarCheck, 
   Users, 
   UserCheck, 
   FileCheck, 
-  CalendarCheck,
-  Layers,
-  Wallet,
+  Layers, 
+  Wallet, 
+  LifeBuoy, 
+  FileText, 
   Settings, 
-  LogOut,
-  Shield,
-  FileText,
-  ShieldCheck,
-  X
+  LogOut, 
+  ChevronLeft, 
+  ChevronRight,
+  Shield
 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 
 interface NavItem {
   name: string;
   href: string;
   icon: any;
   badge?: string;
+  badgeColor?: string;
 }
 
 interface NavSection {
@@ -35,7 +37,24 @@ interface NavSection {
 export default function AdminSidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const [collapsed, setCollapsed] = useState(false);
   const [showSignoutConfirm, setShowSignoutConfirm] = useState(false);
+
+  // Restore collapsed state from localStorage if available
+  useEffect(() => {
+    const saved = localStorage.getItem('mubryx_sidebar_collapsed');
+    if (saved !== null) {
+      setCollapsed(saved === 'true');
+    }
+  }, []);
+
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem('mubryx_sidebar_collapsed', String(next));
+      return next;
+    });
+  };
 
   const handleLogout = async () => {
     try {
@@ -52,12 +71,13 @@ export default function AdminSidebar() {
     {
       title: 'Operations',
       items: [
-        { name: 'Overview', href: '/', icon: LayoutDashboard },
+        { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+        { name: 'Live Operations', href: '/live-ops', icon: Activity, badge: 'LIVE', badgeColor: 'bg-rose-500/20 text-rose-300 border-rose-500/30' },
         { name: 'Orders & Dispatches', href: '/bookings', icon: CalendarCheck },
       ],
     },
     {
-      title: 'Workforce & Compliance',
+      title: 'Workforce & KYC',
       items: [
         { name: 'Technicians', href: '/technicians', icon: Users },
         { name: 'KYC Verifications', href: '/verifications', icon: UserCheck },
@@ -65,59 +85,104 @@ export default function AdminSidebar() {
       ],
     },
     {
-      title: 'Platform & Finance',
+      title: 'Finance & Catalog',
       items: [
+        { name: 'Ledger & Wallets', href: '/finance', icon: Wallet },
         { name: 'Services Catalog', href: '/services', icon: Layers },
-        { name: 'Financials & Wallets', href: '/finance', icon: Wallet },
       ],
     },
     {
-      title: 'Governance & Security',
+      title: 'Customer Experience',
       items: [
-        { name: 'Security Audit Logs', href: '/audit-logs', icon: FileText },
+        { name: 'Support & Disputes', href: '/support', icon: LifeBuoy },
+      ],
+    },
+    {
+      title: 'Security & Governance',
+      items: [
+        { name: 'Audit Logs', href: '/audit-logs', icon: FileText },
         { name: 'System Settings', href: '/settings', icon: Settings },
       ],
     },
   ];
 
   return (
-    <aside className="flex flex-col w-64 bg-slate-900/40 backdrop-blur-2xl text-slate-300 h-full border-r border-white/5 flex-shrink-0 select-none z-20">
+    <aside
+      className={`flex flex-col bg-slate-900 border-r border-slate-800 text-slate-300 h-full flex-shrink-0 select-none z-30 transition-all duration-200 ${
+        collapsed ? 'w-16' : 'w-60'
+      }`}
+    >
       {/* Brand Header */}
-      <div className="flex items-center justify-between h-16 px-5 border-b border-white/5">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 text-white shadow-lg shadow-blue-500/30 flex items-center justify-center font-black text-sm tracking-tighter">
+      <div className="flex items-center justify-between h-14 px-3.5 border-b border-slate-800">
+        <div className="flex items-center gap-2.5 overflow-hidden">
+          <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center font-black text-xs flex-shrink-0 shadow-xs">
             M
           </div>
-          <div>
-            <span className="text-sm font-extrabold tracking-tight text-white block leading-tight">Mubryx</span>
-            <span className="text-[10px] text-blue-400 font-mono block leading-none font-semibold uppercase tracking-widest">Admin Console</span>
-          </div>
+          {!collapsed && (
+            <div className="truncate">
+              <span className="text-xs font-bold tracking-tight text-white block leading-tight">
+                Mubryx Ops
+              </span>
+              <span className="text-[9px] text-slate-500 font-mono block leading-none font-semibold uppercase tracking-wider">
+                Admin Console
+              </span>
+            </div>
+          )}
         </div>
+
+        {/* Collapse Toggle Button */}
+        <button
+          onClick={toggleCollapsed}
+          className="p-1 rounded-md text-slate-500 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+        </button>
       </div>
 
       {/* Navigation Sections */}
-      <div className="flex flex-col flex-1 overflow-y-auto px-4 py-6 space-y-6 custom-scrollbar">
+      <div className="flex flex-col flex-1 overflow-y-auto px-2.5 py-4 space-y-5 custom-scrollbar">
         {navSections.map((section) => (
-          <div key={section.title} className="space-y-1.5">
-            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-3 mb-2">
-              {section.title}
-            </div>
+          <div key={section.title} className="space-y-1">
+            {!collapsed && (
+              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-2.5 mb-1.5">
+                {section.title}
+              </div>
+            )}
             {section.items.map((item) => {
-              const isActive = pathname === item.href || (item.href !== '/' && pathname?.startsWith(`${item.href}`));
+              const isActive =
+                pathname === item.href ||
+                (item.href !== '/' && pathname?.startsWith(`${item.href}`));
+
               return (
                 <Link
                   key={item.name}
                   href={item.href}
-                  className={`group flex items-center justify-between px-3 py-2.5 text-xs font-medium rounded-xl transition-all duration-200 ${
+                  title={collapsed ? item.name : undefined}
+                  className={`group flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition-colors cursor-pointer ${
                     isActive
-                      ? 'bg-gradient-to-r from-blue-600/20 to-indigo-600/5 text-white font-semibold border border-blue-500/20 shadow-lg shadow-blue-900/20'
-                      : 'text-slate-400 hover:text-white hover:bg-white/5 border border-transparent'
+                      ? 'bg-blue-600/15 text-blue-400 font-semibold border border-blue-500/20'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800/60 border border-transparent'
                   }`}
                 >
-                  <div className="flex items-center gap-3 truncate">
-                    <item.icon className={`h-4 w-4 flex-shrink-0 transition-transform duration-200 group-hover:scale-110 ${isActive ? 'text-blue-400' : 'text-slate-500 group-hover:text-blue-300'}`} />
-                    <span className="truncate tracking-wide">{item.name}</span>
+                  <div className="flex items-center gap-2.5 truncate">
+                    <item.icon
+                      className={`h-4 w-4 flex-shrink-0 ${
+                        isActive ? 'text-blue-400' : 'text-slate-500 group-hover:text-slate-300'
+                      }`}
+                    />
+                    {!collapsed && <span className="truncate tracking-wide">{item.name}</span>}
                   </div>
+
+                  {!collapsed && item.badge && (
+                    <span
+                      className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border uppercase ${
+                        item.badgeColor || 'bg-slate-800 text-slate-400 border-slate-700'
+                      }`}
+                    >
+                      {item.badge}
+                    </span>
+                  )}
                 </Link>
               );
             })}
@@ -125,23 +190,23 @@ export default function AdminSidebar() {
         ))}
       </div>
 
-      {/* Footer / Operator Status & Logout */}
-      <div className="p-4 border-t border-white/5 bg-slate-900/20 backdrop-blur-xl text-xs">
+      {/* Footer / Operator Session */}
+      <div className="p-3 border-t border-slate-800 bg-slate-950/40 text-xs">
         {showSignoutConfirm ? (
-          <div className="bg-slate-950 p-3 rounded-xl border border-rose-500/30 text-slate-300 space-y-3 shadow-xl animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-slate-900 p-2.5 rounded-lg border border-rose-500/30 text-slate-300 space-y-2">
             <p className="text-[11px] font-semibold text-white leading-snug text-center">
-              End administrative session?
+              End session?
             </p>
-            <div className="flex gap-2">
+            <div className="flex gap-1.5">
               <button
                 onClick={handleLogout}
-                className="flex-1 py-1.5 text-[11px] font-bold bg-rose-600 hover:bg-rose-500 text-white rounded-lg transition-colors cursor-pointer shadow-md shadow-rose-900/50"
+                className="flex-1 py-1 text-[11px] font-bold bg-rose-600 hover:bg-rose-500 text-white rounded transition-colors cursor-pointer"
               >
                 Sign Out
               </button>
               <button
                 onClick={() => setShowSignoutConfirm(false)}
-                className="py-1.5 px-3 text-[11px] font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors cursor-pointer"
+                className="py-1 px-2.5 text-[11px] font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 rounded transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -150,15 +215,18 @@ export default function AdminSidebar() {
         ) : (
           <button
             onClick={() => setShowSignoutConfirm(true)}
-            className="w-full flex items-center justify-between px-3 py-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-all duration-200 cursor-pointer group"
+            className="w-full flex items-center justify-between px-2.5 py-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer group"
+            title="Sign Out"
           >
-            <span className="flex items-center gap-2.5 text-xs font-semibold tracking-wide">
-              <LogOut className="h-4 w-4 group-hover:-translate-x-0.5 transition-transform" />
-              Sign Out
+            <span className="flex items-center gap-2 text-xs font-medium tracking-wide truncate">
+              <LogOut className="h-4 w-4 flex-shrink-0 group-hover:-translate-x-0.5 transition-transform" />
+              {!collapsed && <span className="truncate">Sign Out</span>}
             </span>
-            <span className="text-[9px] font-bold uppercase tracking-widest text-slate-600 group-hover:text-rose-500/50 transition-colors">
-              Esc
-            </span>
+            {!collapsed && (
+              <span className="text-[9px] font-mono text-slate-600 group-hover:text-rose-500/60 uppercase">
+                ESC
+              </span>
+            )}
           </button>
         )}
       </div>

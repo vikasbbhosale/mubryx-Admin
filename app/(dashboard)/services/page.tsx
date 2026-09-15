@@ -14,8 +14,14 @@ import {
   Power, 
   Sparkles, 
   Loader2, 
-  Plus
+  Plus,
+  ArrowUpRight,
+  TrendingUp,
+  SlidersHorizontal,
+  RefreshCw
 } from 'lucide-react';
+import { StatusBadge } from '@/components/ui/StatusBadge';
+import { CaseDrawer } from '@/components/ui/CaseDrawer';
 
 interface Category {
   id: string;
@@ -55,6 +61,8 @@ export default function ServicesPage() {
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [search, setSearch] = useState('');
+  
+  // Drawer Editing
   const [editingService, setEditingService] = useState<ServiceItem | null>(null);
   const [editPrice, setEditPrice] = useState<number>(0);
   const [editDiscountPrice, setEditDiscountPrice] = useState<string>('');
@@ -93,11 +101,11 @@ export default function ServicesPage() {
   };
 
   const handleToggleActive = async (service: ServiceItem) => {
-    try {
-      const newStatus = !service.isActive;
-      // Optimistic update
-      setServices(prev => prev.map(s => s.id === service.id ? { ...s, isActive: newStatus } : s));
+    const newStatus = !service.isActive;
+    // Optimistic update
+    setServices(prev => prev.map(s => s.id === service.id ? { ...s, isActive: newStatus } : s));
 
+    try {
       const res = await fetch(`/api/services/${service.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -105,7 +113,6 @@ export default function ServicesPage() {
       });
 
       if (!res.ok) {
-        // Revert on error
         setServices(prev => prev.map(s => s.id === service.id ? { ...s, isActive: service.isActive } : s));
       }
     } catch (error) {
@@ -114,7 +121,7 @@ export default function ServicesPage() {
     }
   };
 
-  const openEditModal = (service: ServiceItem) => {
+  const openEditDrawer = (service: ServiceItem) => {
     setEditingService(service);
     setEditPrice(service.price);
     setEditDiscountPrice(service.discountPrice ? service.discountPrice.toString() : '');
@@ -154,43 +161,54 @@ export default function ServicesPage() {
   const activeServices = services.filter(s => s.isActive).length;
 
   return (
-    <div className="space-y-6 pb-16">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="space-y-4">
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Services & Catalog</h1>
-            <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-              {totalServices} Available
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-xl font-bold tracking-tight text-white">Catalog & Service Offerings</h1>
+            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">
+              {totalServices} Master SKUs ({activeServices} Live)
             </span>
           </div>
-          <p className="mt-1 text-sm text-slate-500">
-            Configure master service catalog, pricing tiers, durations, and category placements.
+          <p className="text-xs text-slate-400 mt-0.5">
+            Configure service pricing matrices, execution turnaround times, and marketplace availability.
           </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={fetchData}
+            disabled={loading}
+            className="p-1.5 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white rounded border border-slate-800 transition-colors"
+            title="Refresh Catalog"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+          </button>
         </div>
       </div>
 
-      {/* Categories Bar */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex items-center gap-2 overflow-x-auto">
+      {/* Category Pills Bar */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 custom-scrollbar text-xs">
         <button
           onClick={() => setSelectedCategory('ALL')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer border ${
+          className={`px-3 py-1.5 rounded text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer border ${
             selectedCategory === 'ALL'
-              ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-              : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+              ? 'bg-blue-600 text-white border-blue-500 shadow-xs'
+              : 'bg-slate-900/80 text-slate-400 border-slate-800 hover:bg-slate-800 hover:text-slate-200'
           }`}
         >
-          All Categories ({categories.reduce((acc, c) => acc + (c._count?.Service || 0), 0)})
+          All Domains ({categories.reduce((acc, c) => acc + (c._count?.Service || 0), 0)})
         </button>
 
         {categories.map((cat) => (
           <button
             key={cat.id}
             onClick={() => setSelectedCategory(cat.id)}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer border ${
+            className={`px-3 py-1.5 rounded text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer border ${
               selectedCategory === cat.id
-                ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                ? 'bg-blue-600 text-white border-blue-500 shadow-xs'
+                : 'bg-slate-900/80 text-slate-400 border-slate-800 hover:bg-slate-800 hover:text-slate-200'
             }`}
           >
             {cat.name} ({cat._count?.Service || 0})
@@ -198,136 +216,121 @@ export default function ServicesPage() {
         ))}
       </div>
 
-      {/* Search and Filters */}
-      <div className="flex justify-between items-center gap-4">
-        <form onSubmit={handleSearchSubmit} className="relative w-full max-w-sm flex items-center">
-          <Search className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
+      {/* Search and Quick Metric Bar */}
+      <div className="bg-slate-900/60 border border-slate-800 rounded-lg p-3 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+        <form onSubmit={handleSearchSubmit} className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
           <input
             type="text"
             placeholder="Search service title or description..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 text-xs font-medium rounded-xl pl-9 pr-8 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
+            className="w-full bg-slate-950 border border-slate-800 rounded-md pl-9 pr-4 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-slate-700"
           />
-          {search && (
-            <button
-              type="button"
-              onClick={() => { setSearch(''); fetchData(); }}
-              className="absolute right-2.5 text-slate-400 hover:text-slate-600"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          )}
         </form>
 
-        <div className="text-xs font-semibold text-slate-500">
-          Showing <span className="text-slate-900 font-bold">{services.length}</span> services ({activeServices} active)
+        <div className="text-xs text-slate-400 font-mono">
+          Live SKUs: <span className="text-emerald-400 font-bold">{activeServices}</span> | Paused: <span className="text-slate-500 font-bold">{totalServices - activeServices}</span>
         </div>
       </div>
 
       {/* Services Grid */}
       {loading ? (
-        <div className="bg-white rounded-xl border border-slate-200 p-16 flex items-center justify-center">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        <div className="bg-slate-900/60 border border-slate-800 rounded-lg p-16 flex items-center justify-center">
+          <Loader2 className="w-7 h-7 animate-spin text-blue-500" />
         </div>
       ) : services.length === 0 ? (
-        <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
-          <Layers className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-          <h3 className="text-base font-bold text-slate-800">No Services Found</h3>
-          <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
-            Try adjusting your search terms or selecting a different category.
+        <div className="bg-slate-900/60 border border-slate-800 rounded-lg p-16 text-center">
+          <Layers className="w-10 h-10 text-slate-600 mx-auto mb-2 opacity-50" />
+          <h3 className="text-sm font-semibold text-slate-300">No Catalog Services Found</h3>
+          <p className="text-xs text-slate-500 mt-1">
+            Try adjusting your search terms or selecting a different category domain.
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {services.map((service) => (
             <div
               key={service.id}
-              className={`bg-white rounded-2xl border transition-all p-5 flex flex-col justify-between shadow-xs hover:shadow-md ${
-                service.isActive ? 'border-slate-200/90' : 'border-slate-200 opacity-60 bg-slate-50/50'
+              className={`bg-slate-900/60 rounded-lg border transition-all p-3.5 flex flex-col justify-between ${
+                service.isActive ? 'border-slate-800 hover:border-slate-700' : 'border-slate-800/40 opacity-50 bg-slate-950/40'
               }`}
             >
               <div>
-                {/* Badges Bar */}
-                <div className="flex items-center justify-between gap-2 mb-3">
-                  <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-bold text-[10px] tracking-wide uppercase">
+                {/* Header Tag Bar */}
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold uppercase bg-slate-800 text-slate-300 border border-slate-700">
                     {service.Category?.name || 'General'}
                   </span>
 
                   <div className="flex items-center gap-1.5">
                     {service.isPopular && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                        <Sparkles className="w-3 h-3 text-amber-500" />
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                        <Sparkles className="w-2.5 h-2.5 text-amber-400" />
                         Popular
                       </span>
                     )}
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                      service.isActive 
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
-                        : 'bg-rose-50 text-rose-700 border-rose-200'
-                    }`}>
-                      {service.isActive ? 'Active' : 'Disabled'}
-                    </span>
+                    <StatusBadge status={service.isActive ? 'ACTIVE' : 'SUSPENDED'} />
                   </div>
                 </div>
 
                 {/* Title and Description */}
-                <h3 className="font-bold text-slate-900 text-sm leading-snug">
+                <h3 className="font-bold text-white text-xs leading-snug">
                   {service.title}
                 </h3>
-                <p className="text-slate-500 text-xs mt-1.5 line-clamp-2 leading-relaxed">
+                <p className="text-slate-400 text-[11px] mt-1 line-clamp-2 leading-relaxed">
                   {service.description}
                 </p>
 
-                {/* Details Bar */}
-                <div className="flex items-center gap-4 mt-4 pt-3 border-t border-slate-100 text-xs text-slate-500">
+                {/* Duration & Rating */}
+                <div className="flex items-center gap-3 mt-3 pt-2.5 border-t border-slate-800/80 text-[11px] text-slate-400">
                   <div className="flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-slate-400" />
+                    <Clock className="w-3 h-3 text-slate-500" />
                     <span>{service.duration}</span>
                   </div>
                   <div className="flex items-center gap-1">
-                    <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-                    <span className="font-bold text-slate-800">{service.rating.toFixed(1)}</span>
-                    <span className="text-[11px] text-slate-400">({service.reviewCount})</span>
+                    <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
+                    <span className="font-bold text-slate-200">{service.rating.toFixed(1)}</span>
+                    <span className="text-[10px] text-slate-500 font-mono">({service.reviewCount})</span>
                   </div>
                 </div>
               </div>
 
-              {/* Bottom Price & Controls */}
-              <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between">
+              {/* Pricing & Management Controls */}
+              <div className="mt-3.5 pt-2.5 border-t border-slate-800/80 flex items-center justify-between">
                 <div>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-lg font-extrabold text-slate-900">
+                  <div className="flex items-baseline gap-1.5 font-mono">
+                    <span className="text-base font-bold text-white">
                       ₹{service.discountPrice || service.price}
                     </span>
                     {service.discountPrice && (
-                      <span className="text-xs text-slate-400 line-through">
+                      <span className="text-[11px] text-slate-500 line-through">
                         ₹{service.price}
                       </span>
                     )}
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  {/* Edit Button */}
+                <div className="flex items-center gap-1.5">
+                  {/* Edit Pricing Button */}
                   <button
-                    onClick={() => openEditModal(service)}
-                    className="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer border border-slate-200"
-                    title="Edit Pricing & Settings"
+                    onClick={() => openEditDrawer(service)}
+                    className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700 transition-colors cursor-pointer"
+                    title="Edit Pricing & Duration"
                   >
-                    <Edit3 className="w-3.5 h-3.5" />
+                    <Edit3 className="w-3 h-3" />
                   </button>
 
-                  {/* Active Toggle */}
+                  {/* Toggle Active Switch */}
                   <button
                     onClick={() => handleToggleActive(service)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+                    className={`px-2 py-1 rounded text-[11px] font-semibold transition-colors flex items-center gap-1 cursor-pointer border ${
                       service.isActive
-                        ? 'bg-rose-50 text-rose-700 hover:bg-rose-100 border-rose-200'
-                        : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-200'
+                        ? 'bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border-rose-500/30'
+                        : 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border-emerald-500/30'
                     }`}
                   >
-                    <Power className="w-3 h-3" />
+                    <Power className="w-2.5 h-2.5" />
                     {service.isActive ? 'Disable' : 'Enable'}
                   </button>
                 </div>
@@ -337,99 +340,92 @@ export default function ServicesPage() {
         </div>
       )}
 
-      {/* Edit Service Modal */}
-      {editingService && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-5">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">Edit Catalog Service</h3>
-                <p className="text-xs text-slate-500 mt-0.5">{editingService.title}</p>
-              </div>
-              <button
-                onClick={() => setEditingService(null)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
-              >
-                <X className="w-5 h-5" />
-              </button>
+      {/* Edit Service CaseDrawer */}
+      <CaseDrawer
+        isOpen={Boolean(editingService)}
+        onClose={() => setEditingService(null)}
+        title="Configure Service SKU"
+        subtitle={editingService?.title || ''}
+        status={editingService?.isActive ? 'ACTIVE' : 'SUSPENDED'}
+        actions={
+          <div className="flex items-center justify-end gap-2 w-full">
+            <button
+              onClick={() => setEditingService(null)}
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded"
+            >
+              Cancel
+            </button>
+            <button
+              disabled={saving}
+              onClick={handleSaveEdit}
+              className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              Save Changes
+            </button>
+          </div>
+        }
+      >
+        {editingService && (
+          <div className="space-y-4 text-xs">
+            <div className="bg-slate-900 border border-slate-800 rounded p-3 space-y-1">
+              <span className="text-[10px] text-slate-500 font-semibold uppercase">Category Domain</span>
+              <p className="font-bold text-slate-200">{editingService.Category?.name || 'General Service'}</p>
             </div>
 
-            <div className="space-y-4 text-xs">
-              {/* Price Fields */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Standard Price (₹)
-                  </label>
-                  <input
-                    type="number"
-                    value={editPrice}
-                    onChange={(e) => setEditPrice(Number(e.target.value))}
-                    className="w-full p-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Discounted Price (₹)
-                  </label>
-                  <input
-                    type="number"
-                    placeholder="Optional"
-                    value={editDiscountPrice}
-                    onChange={(e) => setEditDiscountPrice(e.target.value)}
-                    className="w-full p-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Duration Field */}
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  Estimated Duration
+                <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                  Base Price (₹) *
                 </label>
                 <input
-                  type="text"
-                  value={editDuration}
-                  onChange={(e) => setEditDuration(e.target.value)}
-                  placeholder="e.g. 45 mins, 1 hour"
-                  className="w-full p-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  type="number"
+                  value={editPrice}
+                  onChange={(e) => setEditPrice(Number(e.target.value))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-slate-100 font-mono focus:outline-none focus:border-slate-700"
                 />
               </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                  Discount Price (₹)
+                </label>
+                <input
+                  type="number"
+                  placeholder="Optional"
+                  value={editDiscountPrice}
+                  onChange={(e) => setEditDiscountPrice(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-slate-100 font-mono focus:outline-none focus:border-slate-700"
+                />
+              </div>
+            </div>
 
-              {/* Is Popular Checkbox */}
-              <div className="flex items-center gap-3 pt-2">
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                Estimated Turnaround Duration
+              </label>
+              <input
+                type="text"
+                value={editDuration}
+                onChange={(e) => setEditDuration(e.target.value)}
+                placeholder="e.g. 45 mins, 2 hours"
+                className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-slate-100 focus:outline-none focus:border-slate-700"
+              />
+            </div>
+
+            <div className="pt-2 border-t border-slate-800">
+              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
                 <input
                   type="checkbox"
-                  id="isPopularCheck"
                   checked={editIsPopular}
                   onChange={(e) => setEditIsPopular(e.target.checked)}
-                  className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                  className="rounded border-slate-700 text-blue-600 focus:ring-0"
                 />
-                <label htmlFor="isPopularCheck" className="text-xs font-semibold text-slate-800 cursor-pointer">
-                  Feature as "Popular Service" on customer app
-                </label>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-              <button
-                onClick={() => setEditingService(null)}
-                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                disabled={saving}
-                onClick={handleSaveEdit}
-                className="px-5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-xs transition-colors cursor-pointer flex items-center gap-2"
-              >
-                {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                Save Changes
-              </button>
+                <span>Highlight as "Featured / Popular" on customer marketplace</span>
+              </label>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </CaseDrawer>
     </div>
   );
 }
