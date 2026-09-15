@@ -72,7 +72,7 @@ export default function AdminSidebar() {
       title: 'Operations',
       items: [
         { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-        { name: 'Live Operations', href: '/live-ops', icon: Activity, badge: 'LIVE', badgeColor: 'bg-rose-500/20 text-rose-300 border-rose-500/30' },
+        { name: 'Live Operations', href: '/live-ops', icon: Activity, badge: 'LIVE', badgeColor: 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30' },
         { name: 'Orders & Dispatches', href: '/bookings', icon: CalendarCheck },
       ],
     },
@@ -108,22 +108,22 @@ export default function AdminSidebar() {
 
   return (
     <aside
-      className={`flex flex-col bg-slate-900 border-r border-slate-800 text-slate-300 h-full flex-shrink-0 select-none z-30 transition-all duration-200 ${
+      className={`flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 h-full flex-shrink-0 select-none z-30 transition-all duration-200 ${
         collapsed ? 'w-16' : 'w-60'
       }`}
     >
       {/* Brand Header */}
-      <div className="flex items-center justify-between h-14 px-3.5 border-b border-slate-800">
+      <div className="flex items-center justify-between h-14 px-3.5 border-b border-slate-200 dark:border-slate-800">
         <div className="flex items-center gap-2.5 overflow-hidden">
           <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center font-black text-xs flex-shrink-0 shadow-xs">
             M
           </div>
           {!collapsed && (
             <div className="truncate">
-              <span className="text-xs font-bold tracking-tight text-white block leading-tight">
+              <span className="text-xs font-bold tracking-tight text-slate-900 dark:text-white block leading-tight">
                 Mubryx Ops
               </span>
-              <span className="text-[9px] text-slate-500 font-mono block leading-none font-semibold uppercase tracking-wider">
+              <span className="text-[9px] text-slate-400 dark:text-slate-500 font-mono block leading-none font-semibold uppercase tracking-wider">
                 Admin Console
               </span>
             </div>
@@ -133,7 +133,7 @@ export default function AdminSidebar() {
         {/* Collapse Toggle Button */}
         <button
           onClick={toggleCollapsed}
-          className="p-1 rounded-md text-slate-500 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+          className="p-1 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
@@ -145,7 +145,7 @@ export default function AdminSidebar() {
         {navSections.map((section) => (
           <div key={section.title} className="space-y-1">
             {!collapsed && (
-              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-2.5 mb-1.5">
+              <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-2.5 mb-1.5">
                 {section.title}
               </div>
             )}
@@ -161,14 +161,14 @@ export default function AdminSidebar() {
                   title={collapsed ? item.name : undefined}
                   className={`group flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition-colors cursor-pointer ${
                     isActive
-                      ? 'bg-blue-600/15 text-blue-400 font-semibold border border-blue-500/20'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800/60 border border-transparent'
+                      ? 'bg-blue-50 dark:bg-blue-600/15 text-blue-600 dark:text-blue-400 font-semibold border border-blue-200 dark:border-blue-500/20 shadow-2xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60 border border-transparent'
                   }`}
                 >
                   <div className="flex items-center gap-2.5 truncate">
                     <item.icon
                       className={`h-4 w-4 flex-shrink-0 ${
-                        isActive ? 'text-blue-400' : 'text-slate-500 group-hover:text-slate-300'
+                        isActive ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300'
                       }`}
                     />
                     {!collapsed && <span className="truncate tracking-wide">{item.name}</span>}
@@ -177,7 +177,7 @@ export default function AdminSidebar() {
                   {!collapsed && item.badge && (
                     <span
                       className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border uppercase ${
-                        item.badgeColor || 'bg-slate-800 text-slate-400 border-slate-700'
+                        item.badgeColor || 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700'
                       }`}
                     >
                       {item.badge}
@@ -191,10 +191,10 @@ export default function AdminSidebar() {
       </div>
 
       {/* Footer / Operator Session */}
-      <div className="p-3 border-t border-slate-800 bg-slate-950/40 text-xs">
+      <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/40 text-xs">
         {showSignoutConfirm ? (
-          <div className="bg-slate-900 p-2.5 rounded-lg border border-rose-500/30 text-slate-300 space-y-2">
-            <p className="text-[11px] font-semibold text-white leading-snug text-center">
+          <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-rose-300 dark:border-rose-500/30 text-slate-700 dark:text-slate-300 space-y-2 shadow-sm">
+            <p className="text-[11px] font-semibold text-slate-900 dark:text-white leading-snug text-center">
               End session?
             </p>
             <div className="flex gap-1.5">
@@ -206,7 +206,7 @@ export default function AdminSidebar() {
               </button>
               <button
                 onClick={() => setShowSignoutConfirm(false)}
-                className="py-1 px-2.5 text-[11px] font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 rounded transition-colors cursor-pointer"
+                className="py-1 px-2.5 text-[11px] font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -215,7 +215,7 @@ export default function AdminSidebar() {
         ) : (
           <button
             onClick={() => setShowSignoutConfirm(true)}
-            className="w-full flex items-center justify-between px-2.5 py-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer group"
+            className="w-full flex items-center justify-between px-2.5 py-1.5 text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer group"
             title="Sign Out"
           >
             <span className="flex items-center gap-2 text-xs font-medium tracking-wide truncate">
@@ -223,7 +223,7 @@ export default function AdminSidebar() {
               {!collapsed && <span className="truncate">Sign Out</span>}
             </span>
             {!collapsed && (
-              <span className="text-[9px] font-mono text-slate-600 group-hover:text-rose-500/60 uppercase">
+              <span className="text-[9px] font-mono text-slate-400 dark:text-slate-600 group-hover:text-rose-500 uppercase">
                 ESC
               </span>
             )}

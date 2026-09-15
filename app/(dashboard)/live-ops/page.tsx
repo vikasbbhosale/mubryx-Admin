@@ -17,7 +17,8 @@ import {
   CheckCircle2, 
   ArrowUpRight,
   ExternalLink,
-  Ban
+  Ban,
+  Loader2
 } from 'lucide-react';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { CaseDrawer } from '@/components/ui/CaseDrawer';
@@ -54,6 +55,7 @@ export default function LiveOperationsPage() {
   const [bookings, setBookings] = useState<BookingItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [selectedCity, setSelectedCity] = useState('ALL');
   const [selectedBooking, setSelectedBooking] = useState<BookingItem | null>(null);
@@ -63,6 +65,7 @@ export default function LiveOperationsPage() {
   const fetchLiveOps = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     setRefreshing(true);
+    setError(null);
     try {
       // Fetch active bookings
       const res = await fetch('/api/bookings?tab=active&limit=50');
@@ -74,9 +77,12 @@ export default function LiveOperationsPage() {
           const updated = items.find((b: BookingItem) => b.id === selectedBooking.id);
           if (updated) setSelectedBooking(updated);
         }
+      } else {
+        throw new Error(`Failed to load live dispatch queue (${res.status})`);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('Failed to fetch live operations', e);
+      setError(e?.message || 'Failed to connect to operations dispatch stream.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -122,7 +128,7 @@ export default function LiveOperationsPage() {
     ['TECHNICIAN_ARRIVED', 'SERVICE_STARTED'].includes(b.status)
   );
 
-  // At-risk detection (jobs created > 15 mins ago still unassigned, or pending payment)
+  // At-risk detection (jobs created > 10 mins ago still unassigned, or pending payment)
   const now = new Date().getTime();
   const atRiskJobs = filtered.filter((b) => {
     const ageMins = (now - new Date(b.createdAt).getTime()) / (1000 * 60);
@@ -155,18 +161,18 @@ export default function LiveOperationsPage() {
   return (
     <div className="space-y-5 pb-12">
       {/* 1. Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+            <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
               <Activity className="w-5 h-5 text-rose-500 animate-pulse" />
               Live Operations & Air-Traffic Control
             </h1>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20 font-bold uppercase">
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 font-bold uppercase">
               {bookings.length} Active Jobs
             </span>
           </div>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Real-time technician fulfillment monitoring, SLA compliance, and dispatch resolution.
           </p>
         </div>
@@ -175,76 +181,92 @@ export default function LiveOperationsPage() {
           <button
             onClick={() => fetchLiveOps()}
             disabled={refreshing}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer shadow-xs"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-blue-400' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-blue-500 dark:text-blue-400' : ''}`} />
             <span>Refresh</span>
           </button>
           <Link
             href="/bookings"
-            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 transition-colors"
+            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 transition-colors shadow-xs"
           >
             All Bookings &rarr;
           </Link>
         </div>
       </div>
 
+      {/* Error state if failed */}
+      {error && (
+        <div className="p-3.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 rounded-xl flex items-center justify-between text-xs text-rose-700 dark:text-rose-400">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600 dark:text-rose-400" />
+            <span>{error}</span>
+          </div>
+          <button
+            onClick={() => fetchLiveOps()}
+            className="px-2.5 py-1 rounded bg-rose-600 hover:bg-rose-500 text-white font-medium text-[11px] transition-colors"
+          >
+            Retry Connection
+          </button>
+        </div>
+      )}
+
       {/* 2. Operational Control Tickers */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+        <div className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs">
+          <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
             Searching / Unassigned
           </span>
           <div className="mt-1 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-amber-400 font-mono">
-              {unassigned.length}
+            <span className="text-2xl font-black text-amber-500 dark:text-amber-400 font-mono">
+              {loading && bookings.length === 0 ? '-' : unassigned.length}
             </span>
-            <span className="text-[10px] text-slate-500">jobs</span>
+            <span className="text-[10px] text-slate-400 dark:text-slate-500">jobs</span>
           </div>
         </div>
 
-        <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+        <div className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs">
+          <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
             Technician Dispatched
           </span>
           <div className="mt-1 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-blue-400 font-mono">
-              {dispatched.length + enRoute.length}
+            <span className="text-2xl font-black text-blue-600 dark:text-blue-400 font-mono">
+              {loading && bookings.length === 0 ? '-' : (dispatched.length + enRoute.length)}
             </span>
-            <span className="text-[10px] text-slate-500">{enRoute.length} on way</span>
+            <span className="text-[10px] text-slate-400 dark:text-slate-500">{enRoute.length} on way</span>
           </div>
         </div>
 
-        <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+        <div className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs">
+          <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
             In Service Execution
           </span>
           <div className="mt-1 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-emerald-400 font-mono">
-              {inService.length}
+            <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
+              {loading && bookings.length === 0 ? '-' : inService.length}
             </span>
-            <span className="text-[10px] text-slate-500">at customer</span>
+            <span className="text-[10px] text-slate-400 dark:text-slate-500">at customer</span>
           </div>
         </div>
 
-        <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl">
-          <span className="text-[11px] font-bold text-rose-400 uppercase tracking-wider block">
+        <div className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs">
+          <span className="text-[11px] font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wider block">
             At-Risk / SLA Alert
           </span>
           <div className="mt-1 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-rose-400 font-mono">
-              {atRiskJobs.length}
+            <span className="text-2xl font-black text-rose-600 dark:text-rose-400 font-mono">
+              {loading && bookings.length === 0 ? '-' : atRiskJobs.length}
             </span>
-            <span className="text-[10px] text-slate-500">require action</span>
+            <span className="text-[10px] text-slate-400 dark:text-slate-500">require action</span>
           </div>
         </div>
       </div>
 
       {/* 3. At-Risk Alert Banner (if any) */}
       {atRiskJobs.length > 0 && (
-        <div className="bg-rose-500/10 border border-rose-500/25 rounded-xl p-3.5 space-y-2.5">
-          <div className="flex items-center gap-2 text-xs font-bold text-rose-300 uppercase tracking-wider">
-            <AlertTriangle className="w-4 h-4 text-rose-400" />
+        <div className="bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/25 rounded-xl p-3.5 space-y-2.5">
+          <div className="flex items-center gap-2 text-xs font-bold text-rose-700 dark:text-rose-300 uppercase tracking-wider">
+            <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400" />
             <span>High Priority Intervention Queue ({atRiskJobs.length} Jobs At Risk)</span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
@@ -252,20 +274,20 @@ export default function LiveOperationsPage() {
               <div
                 key={job.id}
                 onClick={() => setSelectedBooking(job)}
-                className="bg-slate-900/90 border border-rose-500/30 rounded-lg p-3 hover:border-rose-400 transition-colors cursor-pointer text-xs space-y-2"
+                className="bg-white dark:bg-slate-900/90 border border-rose-200 dark:border-rose-500/30 hover:border-rose-400 rounded-lg p-3 transition-colors cursor-pointer text-xs space-y-2 shadow-xs"
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-mono font-bold text-white text-[11px]">
+                  <span className="font-mono font-bold text-slate-900 dark:text-white text-[11px]">
                     {job.bookingNumber}
                   </span>
                   <StatusBadge status={job.status} size="sm" />
                 </div>
-                <p className="text-slate-300 truncate font-medium">
+                <p className="text-slate-700 dark:text-slate-300 truncate font-medium">
                   {job.customer?.name || 'Customer'} • {job.snapshotCity || 'Gujarat'}
                 </p>
-                <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 font-mono">
                   <span>₹{(job.totalAmount ?? 0).toFixed(0)}</span>
-                  <span className="text-rose-400 font-semibold underline">Investigate &rarr;</span>
+                  <span className="text-rose-600 dark:text-rose-400 font-semibold underline">Investigate &rarr;</span>
                 </div>
               </div>
             ))}
@@ -274,25 +296,25 @@ export default function LiveOperationsPage() {
       )}
 
       {/* 4. Filter Toolbar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900 p-2.5 rounded-xl border border-slate-800 text-xs">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs shadow-xs">
         <div className="relative flex-1 w-full sm:w-auto">
-          <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-2.5" />
+          <Search className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 absolute left-3 top-2.5" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search active jobs by number, customer, technician..."
-            className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+            className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-blue-500"
           />
         </div>
 
         {cities.length > 0 && (
           <div className="flex items-center gap-1.5 w-full sm:w-auto">
-            <span className="text-slate-400 text-[11px] whitespace-nowrap">City:</span>
+            <span className="text-slate-500 dark:text-slate-400 text-[11px] whitespace-nowrap">City:</span>
             <select
               value={selectedCity}
               onChange={(e) => setSelectedCity(e.target.value)}
-              className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 cursor-pointer"
+              className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 dark:text-white focus:outline-none focus:border-blue-500 cursor-pointer"
             >
               <option value="ALL">All Cities ({cities.length})</option>
               {cities.map((c) => (
@@ -306,17 +328,22 @@ export default function LiveOperationsPage() {
       {/* 5. Kanban Style Dispatch Board */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         {/* Column 1: Unassigned / Matching */}
-        <div className="bg-slate-900/60 rounded-xl border border-slate-800 p-3.5 flex flex-col min-h-[450px]">
-          <div className="flex items-center justify-between pb-2.5 border-b border-slate-800 mb-3">
-            <span className="font-bold text-xs uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+        <div className="bg-slate-100/70 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 p-3.5 flex flex-col min-h-[450px]">
+          <div className="flex items-center justify-between pb-2.5 border-b border-slate-200 dark:border-slate-800 mb-3">
+            <span className="font-bold text-xs uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-amber-500 dark:bg-amber-400 animate-pulse" />
               Searching ({unassigned.length})
             </span>
           </div>
 
           <div className="space-y-2.5 flex-1 overflow-y-auto custom-scrollbar">
-            {unassigned.length === 0 ? (
-              <div className="py-12 text-center text-slate-500 text-xs">
+            {loading && bookings.length === 0 ? (
+              <div className="py-12 text-center text-slate-400 dark:text-slate-500 text-xs flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
+                <span>Syncing live stream...</span>
+              </div>
+            ) : unassigned.length === 0 ? (
+              <div className="py-12 text-center text-slate-400 dark:text-slate-500 text-xs">
                 No jobs searching for technicians.
               </div>
             ) : (
@@ -324,21 +351,21 @@ export default function LiveOperationsPage() {
                 <div
                   key={job.id}
                   onClick={() => setSelectedBooking(job)}
-                  className="p-3 bg-slate-900 border border-slate-800 hover:border-blue-500/50 rounded-lg cursor-pointer transition-colors space-y-2 text-xs"
+                  className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-blue-500 dark:hover:border-blue-500/50 rounded-lg cursor-pointer transition-colors space-y-2 text-xs shadow-xs"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-mono font-bold text-white text-[11px]">
+                    <span className="font-mono font-bold text-slate-900 dark:text-white text-[11px]">
                       {job.bookingNumber}
                     </span>
-                    <span className="text-slate-400 font-mono text-[10px]">
+                    <span className="text-slate-500 dark:text-slate-400 font-mono text-[10px]">
                       ₹{(job.totalAmount ?? 0).toFixed(0)}
                     </span>
                   </div>
-                  <div className="text-slate-300 font-medium truncate">
+                  <div className="text-slate-700 dark:text-slate-300 font-medium truncate">
                     {job.customer?.name || 'Customer'}
                   </div>
-                  <div className="text-[11px] text-slate-500 truncate flex items-center gap-1">
-                    <MapPin className="w-3 h-3 flex-shrink-0" />
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate flex items-center gap-1">
+                    <MapPin className="w-3 h-3 flex-shrink-0 text-slate-400" />
                     <span>{job.snapshotCity || 'Gujarat'}</span>
                   </div>
                 </div>
@@ -348,17 +375,22 @@ export default function LiveOperationsPage() {
         </div>
 
         {/* Column 2: Dispatched & Assigned */}
-        <div className="bg-slate-900/60 rounded-xl border border-slate-800 p-3.5 flex flex-col min-h-[450px]">
-          <div className="flex items-center justify-between pb-2.5 border-b border-slate-800 mb-3">
-            <span className="font-bold text-xs uppercase tracking-wider text-blue-400 flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-blue-400" />
+        <div className="bg-slate-100/70 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 p-3.5 flex flex-col min-h-[450px]">
+          <div className="flex items-center justify-between pb-2.5 border-b border-slate-200 dark:border-slate-800 mb-3">
+            <span className="font-bold text-xs uppercase tracking-wider text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-blue-500 dark:bg-blue-400" />
               Dispatched ({dispatched.length})
             </span>
           </div>
 
           <div className="space-y-2.5 flex-1 overflow-y-auto custom-scrollbar">
-            {dispatched.length === 0 ? (
-              <div className="py-12 text-center text-slate-500 text-xs">
+            {loading && bookings.length === 0 ? (
+              <div className="py-12 text-center text-slate-400 dark:text-slate-500 text-xs flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                <span>Syncing live stream...</span>
+              </div>
+            ) : dispatched.length === 0 ? (
+              <div className="py-12 text-center text-slate-400 dark:text-slate-500 text-xs">
                 No jobs awaiting technician acceptance.
               </div>
             ) : (
@@ -366,20 +398,20 @@ export default function LiveOperationsPage() {
                 <div
                   key={job.id}
                   onClick={() => setSelectedBooking(job)}
-                  className="p-3 bg-slate-900 border border-slate-800 hover:border-blue-500/50 rounded-lg cursor-pointer transition-colors space-y-2 text-xs"
+                  className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-blue-500 dark:hover:border-blue-500/50 rounded-lg cursor-pointer transition-colors space-y-2 text-xs shadow-xs"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-mono font-bold text-white text-[11px]">
+                    <span className="font-mono font-bold text-slate-900 dark:text-white text-[11px]">
                       {job.bookingNumber}
                     </span>
-                    <span className="text-slate-400 font-mono text-[10px]">
+                    <span className="text-slate-500 dark:text-slate-400 font-mono text-[10px]">
                       ₹{(job.totalAmount ?? 0).toFixed(0)}
                     </span>
                   </div>
-                  <div className="text-slate-300 font-medium truncate">
+                  <div className="text-slate-700 dark:text-slate-300 font-medium truncate">
                     {job.customer?.name || 'Customer'}
                   </div>
-                  <div className="text-[11px] text-blue-400 truncate flex items-center gap-1 font-mono">
+                  <div className="text-[11px] text-blue-600 dark:text-blue-400 truncate flex items-center gap-1 font-mono">
                     <Wrench className="w-3 h-3 flex-shrink-0" />
                     <span>Tech: {job.technician?.fullName || 'Assigned'}</span>
                   </div>
@@ -390,17 +422,22 @@ export default function LiveOperationsPage() {
         </div>
 
         {/* Column 3: En Route */}
-        <div className="bg-slate-900/60 rounded-xl border border-slate-800 p-3.5 flex flex-col min-h-[450px]">
-          <div className="flex items-center justify-between pb-2.5 border-b border-slate-800 mb-3">
-            <span className="font-bold text-xs uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping" />
+        <div className="bg-slate-100/70 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 p-3.5 flex flex-col min-h-[450px]">
+          <div className="flex items-center justify-between pb-2.5 border-b border-slate-200 dark:border-slate-800 mb-3">
+            <span className="font-bold text-xs uppercase tracking-wider text-purple-600 dark:text-purple-400 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-purple-500 dark:bg-purple-400 animate-ping" />
               En Route ({enRoute.length})
             </span>
           </div>
 
           <div className="space-y-2.5 flex-1 overflow-y-auto custom-scrollbar">
-            {enRoute.length === 0 ? (
-              <div className="py-12 text-center text-slate-500 text-xs">
+            {loading && bookings.length === 0 ? (
+              <div className="py-12 text-center text-slate-400 dark:text-slate-500 text-xs flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin text-purple-500" />
+                <span>Syncing live stream...</span>
+              </div>
+            ) : enRoute.length === 0 ? (
+              <div className="py-12 text-center text-slate-400 dark:text-slate-500 text-xs">
                 No technicians currently travelling to site.
               </div>
             ) : (
@@ -408,18 +445,18 @@ export default function LiveOperationsPage() {
                 <div
                   key={job.id}
                   onClick={() => setSelectedBooking(job)}
-                  className="p-3 bg-slate-900 border border-slate-800 hover:border-purple-500/50 rounded-lg cursor-pointer transition-colors space-y-2 text-xs"
+                  className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-purple-500 dark:hover:border-purple-500/50 rounded-lg cursor-pointer transition-colors space-y-2 text-xs shadow-xs"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-mono font-bold text-white text-[11px]">
+                    <span className="font-mono font-bold text-slate-900 dark:text-white text-[11px]">
                       {job.bookingNumber}
                     </span>
                     <StatusBadge status={job.status} size="sm" />
                   </div>
-                  <div className="text-slate-300 font-medium truncate">
+                  <div className="text-slate-700 dark:text-slate-300 font-medium truncate">
                     {job.customer?.name || 'Customer'}
                   </div>
-                  <div className="text-[11px] text-purple-300 truncate font-mono">
+                  <div className="text-[11px] text-purple-600 dark:text-purple-300 truncate font-mono">
                     Tech: {job.technician?.fullName || 'In Transit'}
                   </div>
                 </div>
@@ -429,17 +466,22 @@ export default function LiveOperationsPage() {
         </div>
 
         {/* Column 4: In Progress */}
-        <div className="bg-slate-900/60 rounded-xl border border-slate-800 p-3.5 flex flex-col min-h-[450px]">
-          <div className="flex items-center justify-between pb-2.5 border-b border-slate-800 mb-3">
-            <span className="font-bold text-xs uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+        <div className="bg-slate-100/70 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 p-3.5 flex flex-col min-h-[450px]">
+          <div className="flex items-center justify-between pb-2.5 border-b border-slate-200 dark:border-slate-800 mb-3">
+            <span className="font-bold text-xs uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 dark:bg-emerald-400" />
               In Execution ({inService.length})
             </span>
           </div>
 
           <div className="space-y-2.5 flex-1 overflow-y-auto custom-scrollbar">
-            {inService.length === 0 ? (
-              <div className="py-12 text-center text-slate-500 text-xs">
+            {loading && bookings.length === 0 ? (
+              <div className="py-12 text-center text-slate-400 dark:text-slate-500 text-xs flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin text-emerald-500" />
+                <span>Syncing live stream...</span>
+              </div>
+            ) : inService.length === 0 ? (
+              <div className="py-12 text-center text-slate-400 dark:text-slate-500 text-xs">
                 No jobs actively in progress.
               </div>
             ) : (
@@ -447,18 +489,18 @@ export default function LiveOperationsPage() {
                 <div
                   key={job.id}
                   onClick={() => setSelectedBooking(job)}
-                  className="p-3 bg-slate-900 border border-slate-800 hover:border-emerald-500/50 rounded-lg cursor-pointer transition-colors space-y-2 text-xs"
+                  className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-emerald-500 dark:hover:border-emerald-500/50 rounded-lg cursor-pointer transition-colors space-y-2 text-xs shadow-xs"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-mono font-bold text-white text-[11px]">
+                    <span className="font-mono font-bold text-slate-900 dark:text-white text-[11px]">
                       {job.bookingNumber}
                     </span>
                     <StatusBadge status={job.status} size="sm" />
                   </div>
-                  <div className="text-slate-300 font-medium truncate">
+                  <div className="text-slate-700 dark:text-slate-300 font-medium truncate">
                     {job.customer?.name || 'Customer'}
                   </div>
-                  <div className="text-[11px] text-emerald-400 truncate font-mono">
+                  <div className="text-[11px] text-emerald-600 dark:text-emerald-400 truncate font-mono">
                     Executing: {job.technician?.fullName || 'Technician'}
                   </div>
                 </div>
@@ -480,7 +522,7 @@ export default function LiveOperationsPage() {
             <>
               <button
                 onClick={() => setCancelBookingTarget(selectedBooking)}
-                className="px-3 py-1.5 text-xs font-bold text-rose-400 hover:bg-rose-500/10 border border-rose-500/20 rounded-lg transition-colors cursor-pointer"
+                className="px-3 py-1.5 text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 rounded-lg transition-colors cursor-pointer"
               >
                 Emergency Cancel
               </button>
@@ -497,49 +539,49 @@ export default function LiveOperationsPage() {
         {selectedBooking && (
           <div className="space-y-5">
             {/* Customer Snapshot */}
-            <div className="p-3.5 bg-slate-950/60 rounded-xl border border-slate-800 space-y-2">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+            <div className="p-3.5 bg-slate-50 dark:bg-slate-950/60 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+              <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
                 Customer Information
               </span>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-white font-medium">{selectedBooking.customer?.name || 'Customer'}</span>
-                <span className="font-mono text-slate-400">{selectedBooking.customer?.phone || 'No phone'}</span>
+                <span className="text-slate-900 dark:text-white font-medium">{selectedBooking.customer?.name || 'Customer'}</span>
+                <span className="font-mono text-slate-600 dark:text-slate-400">{selectedBooking.customer?.phone || 'No phone'}</span>
               </div>
-              <p className="text-xs text-slate-400">{selectedBooking.snapshotAddress}</p>
+              <p className="text-xs text-slate-600 dark:text-slate-400">{selectedBooking.snapshotAddress}</p>
             </div>
 
             {/* Technician Snapshot */}
-            <div className="p-3.5 bg-slate-950/60 rounded-xl border border-slate-800 space-y-2">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+            <div className="p-3.5 bg-slate-50 dark:bg-slate-950/60 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+              <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
                 Assigned Technician
               </span>
               {selectedBooking.technician ? (
                 <div className="flex items-center justify-between text-xs">
                   <div>
-                    <span className="text-white font-medium block">
+                    <span className="text-slate-900 dark:text-white font-medium block">
                       {selectedBooking.technician.fullName}
                     </span>
-                    <span className="text-slate-400 font-mono text-[11px]">
+                    <span className="text-slate-500 dark:text-slate-400 font-mono text-[11px]">
                       {selectedBooking.technician.user?.phone || 'No direct phone'}
                     </span>
                   </div>
-                  <span className="text-amber-400 font-mono font-bold">
+                  <span className="text-amber-500 dark:text-amber-400 font-mono font-bold">
                     ★ {selectedBooking.technician.rating ?? '5.0'}
                   </span>
                 </div>
               ) : (
-                <p className="text-xs text-amber-400">
+                <p className="text-xs text-amber-600 dark:text-amber-400">
                   No technician assigned yet. System matching in progress.
                 </p>
               )}
             </div>
 
             {/* Financial Overview */}
-            <div className="p-3.5 bg-slate-950/60 rounded-xl border border-slate-800 space-y-2">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+            <div className="p-3.5 bg-slate-50 dark:bg-slate-950/60 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+              <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
                 Pricing & Order Value
               </span>
-              <div className="flex items-center justify-between text-sm font-bold text-white font-mono">
+              <div className="flex items-center justify-between text-sm font-bold text-slate-900 dark:text-white font-mono">
                 <span>Total Amount:</span>
                 <span>₹{(selectedBooking.totalAmount ?? 0).toFixed(0)}</span>
               </div>

@@ -173,10 +173,10 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       />
 
       {/* Palette Container */}
-      <div className="relative w-full max-w-xl bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-10 flex flex-col">
+      <div className="relative w-full max-w-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl overflow-hidden z-10 flex flex-col transition-colors duration-150">
         {/* Search input */}
-        <div className="flex items-center px-4 border-b border-slate-800">
-          <Search className="w-4 h-4 text-slate-500 mr-3 flex-shrink-0" />
+        <div className="flex items-center px-4 border-b border-slate-200 dark:border-slate-800">
+          <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 mr-3 flex-shrink-0" />
           <input
             ref={inputRef}
             type="text"
@@ -187,15 +187,15 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             }}
             onKeyDown={handleKeyDown}
             placeholder="Type a command or jump to screen..."
-            className="w-full py-3.5 bg-transparent text-white placeholder-slate-500 text-xs focus:outline-none font-medium"
+            className="w-full py-3.5 bg-transparent text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-xs focus:outline-none font-medium"
           />
-          <kbd className="text-[10px] font-mono text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">
+          <kbd className="text-[10px] font-mono text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700">
             ESC
           </kbd>
         </div>
 
         {/* Results List */}
-        <div className="max-h-80 overflow-y-auto p-2 divide-y divide-slate-800/40 custom-scrollbar">
+        <div className="max-h-80 overflow-y-auto p-2 divide-y divide-slate-100 dark:divide-slate-800/40 custom-scrollbar">
           {filteredCommands.length === 0 ? (
             <div className="py-8 text-center text-slate-500 text-xs">
               No matching commands or routes found for &quot;{query}&quot;.
@@ -209,13 +209,13 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
                   onClick={() => handleSelect(cmd)}
                   onMouseEnter={() => setSelectedIndex(idx)}
                   className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs transition-colors text-left cursor-pointer ${
-                    isSelected ? 'bg-blue-600 text-white font-medium' : 'text-slate-300 hover:bg-slate-800/60'
+                    isSelected ? 'bg-blue-600 text-white font-medium shadow-2xs' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60'
                   }`}
                 >
                   <div className="flex items-center gap-3 truncate">
                     <cmd.icon
                       className={`w-4 h-4 flex-shrink-0 ${
-                        isSelected ? 'text-white' : 'text-slate-500'
+                        isSelected ? 'text-white' : 'text-slate-400 dark:text-slate-500'
                       }`}
                     />
                     <span className="truncate">{cmd.title}</span>
@@ -223,7 +223,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <span
                       className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
-                        isSelected ? 'bg-blue-700 text-blue-100' : 'bg-slate-800 text-slate-500'
+                        isSelected ? 'bg-blue-700 text-blue-100' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
                       }`}
                     >
                       {cmd.category}
@@ -233,7 +233,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
                         className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${
                           isSelected
                             ? 'bg-blue-700 border-blue-500 text-blue-100'
-                            : 'bg-slate-950 border-slate-800 text-slate-400'
+                            : 'bg-slate-100 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400'
                         }`}
                       >
                         {cmd.shortcut}
@@ -247,7 +247,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
         </div>
 
         {/* Footer shortcuts */}
-        <div className="px-4 py-2 border-t border-slate-800 bg-slate-950/60 flex items-center justify-between text-[11px] text-slate-500">
+        <div className="px-4 py-2 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 flex items-center justify-between text-[11px] text-slate-500">
           <div className="flex items-center gap-3">
             <span>↑↓ Navigate</span>
             <span>↵ Select</span>

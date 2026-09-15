@@ -105,15 +105,18 @@ function LoginForm() {
       const data = await res.json().catch(() => ({}));
 
       if (res.ok && data.success) {
+        if (data.accessToken) {
+          localStorage.setItem('accessToken', data.accessToken);
+        }
         if (data.user) {
           localStorage.setItem('user', JSON.stringify(data.user));
         }
         router.push(returnTo);
       } else {
-        setError(data.message || 'Invalid or expired verification code.');
+        setError(data.message || 'Verification failed. Please check the code and try again.');
       }
     } catch (err: any) {
-      setError(err?.message || 'Authentication error.');
+      setError(err?.message || 'An error occurred during authentication.');
     } finally {
       setLoading(false);
     }
@@ -126,26 +129,26 @@ function LoginForm() {
         <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 text-white shadow-lg shadow-blue-500/30 mb-4">
           <Sparkles className="w-7 h-7" />
         </div>
-        <h1 className="text-3xl font-extrabold tracking-tight text-white">
-          Mubryx <span className="text-blue-500">Admin</span>
+        <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">
+          Mubryx <span className="text-blue-600 dark:text-blue-500">Admin</span>
         </h1>
-        <p className="mt-2 text-sm text-slate-400">
+        <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
           Secure Administrator Portal Access
         </p>
       </div>
 
       {/* Card */}
-      <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-black/50">
+      <div className="bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl dark:shadow-2xl dark:shadow-black/50">
         {error && (
-          <div className="mb-5 bg-rose-950/80 border border-rose-500/50 text-rose-200 px-4 py-3 rounded-2xl text-xs font-medium flex items-start gap-2.5 animate-fadeIn">
-            <Lock className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
+          <div className="mb-5 bg-rose-50 dark:bg-rose-950/80 border border-rose-200 dark:border-rose-500/50 text-rose-800 dark:text-rose-200 px-4 py-3 rounded-2xl text-xs font-medium flex items-start gap-2.5 animate-fadeIn">
+            <Lock className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
             <span>{error}</span>
           </div>
         )}
 
         {successMessage && (
-          <div className="mb-5 bg-emerald-950/80 border border-emerald-500/50 text-emerald-200 px-4 py-3 rounded-2xl text-xs font-medium flex items-start gap-2.5 animate-fadeIn">
-            <ShieldCheck className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+          <div className="mb-5 bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-200 dark:border-emerald-500/50 text-emerald-800 dark:text-emerald-200 px-4 py-3 rounded-2xl text-xs font-medium flex items-start gap-2.5 animate-fadeIn">
+            <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
             <span>{successMessage}</span>
           </div>
         )}
@@ -155,13 +158,13 @@ function LoginForm() {
             <div>
               <label
                 htmlFor="phone"
-                className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-2"
+                className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-2"
               >
                 Admin Mobile Number
               </label>
               <div className="relative flex items-center">
-                <div className="absolute left-3.5 text-slate-400 flex items-center gap-1.5 text-xs font-semibold select-none border-r border-slate-700 pr-2.5">
-                  <Phone className="w-3.5 h-3.5 text-blue-400" />
+                <div className="absolute left-3.5 text-slate-500 dark:text-slate-400 flex items-center gap-1.5 text-xs font-semibold select-none border-r border-slate-200 dark:border-slate-700 pr-2.5">
+                  <Phone className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                   <span>+91</span>
                 </div>
                 <input
@@ -175,7 +178,7 @@ function LoginForm() {
                     setPhone(e.target.value.replace(/[^\d\s+-]/g, ''));
                     if (error) setError('');
                   }}
-                  className="w-full bg-slate-950/80 border border-slate-700/80 text-white placeholder-slate-500 text-sm font-medium rounded-xl pl-20 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all caret-blue-500"
+                  className="w-full bg-slate-50 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-700/80 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-sm font-medium rounded-xl pl-20 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all caret-blue-500"
                   placeholder="Enter 10-digit authorized number"
                 />
               </div>
@@ -184,7 +187,7 @@ function LoginForm() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full group relative flex justify-center items-center py-3.5 px-4 border border-transparent rounded-xl text-sm font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 focus:ring-offset-slate-900 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-600/25 transition-all"
+              className="w-full group relative flex justify-center items-center py-3.5 px-4 border border-transparent rounded-xl text-sm font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 focus:ring-offset-slate-900 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-600/25 transition-all cursor-pointer"
             >
               {loading ? (
                 <Loader2 className="animate-spin h-5 w-5 text-white" />
@@ -205,24 +208,21 @@ function LoginForm() {
                   setError('');
                   setSuccessMessage('');
                 }}
-                className="text-xs text-slate-400 hover:text-white flex items-center gap-1 transition-colors"
+                className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white flex items-center gap-1 transition-colors cursor-pointer"
               >
                 <ArrowLeft className="w-3.5 h-3.5" /> Back to Phone
               </button>
-              <span className="text-xs text-slate-400 font-mono">+91 {phone}</span>
+              <span className="text-xs text-slate-600 dark:text-slate-400 font-mono font-medium">+91 {phone}</span>
             </div>
 
             <div>
               <label
                 htmlFor="otpCode"
-                className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-2"
+                className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-2"
               >
                 6-Digit OTP Code
               </label>
-              <div className="relative flex items-center">
-                <div className="absolute left-3.5 text-slate-400 flex items-center">
-                  <KeyRound className="w-4 h-4 text-blue-400" />
-                </div>
+              <div className="relative">
                 <input
                   id="otpCode"
                   name="otpCode"
@@ -235,54 +235,58 @@ function LoginForm() {
                     setOtpCode(e.target.value.replace(/\D/g, ''));
                     if (error) setError('');
                   }}
-                  className="w-full bg-slate-950/80 border border-slate-700/80 text-white placeholder-slate-500 text-sm font-bold tracking-widest rounded-xl pl-11 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all caret-blue-500"
-                  placeholder="Enter 6-digit OTP"
+                  className="w-full bg-slate-50 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-700/80 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-lg tracking-[0.4em] font-mono text-center rounded-xl py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                  placeholder="••••••"
                 />
               </div>
             </div>
 
+            {/* Optional Admin PIN */}
             <div>
-              <label
-                htmlFor="adminPin"
-                className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1"
-              >
-                Security PIN <span className="text-slate-600 font-normal">(Optional if configured)</span>
-              </label>
-              <div className="relative flex items-center">
-                <div className="absolute left-3.5 text-slate-500 flex items-center">
-                  <Lock className="w-3.5 h-3.5 text-slate-500" />
-                </div>
-                <input
-                  id="adminPin"
-                  name="adminPin"
-                  type="password"
-                  maxLength={8}
-                  value={adminPin}
-                  onChange={(e) => setAdminPin(e.target.value)}
-                  className="w-full bg-slate-950/80 border border-slate-700/80 text-white placeholder-slate-600 text-xs font-medium rounded-xl pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                  placeholder="Enter security PIN"
-                />
+              <div className="flex items-center justify-between mb-1.5">
+                <label
+                  htmlFor="adminPin"
+                  className="block text-xs font-medium text-slate-600 dark:text-slate-400 flex items-center gap-1"
+                >
+                  <KeyRound className="w-3 h-3 text-slate-400" />
+                  <span>Admin Security PIN</span>
+                </label>
+                <span className="text-[10px] text-slate-400 dark:text-slate-500">Optional</span>
               </div>
+              <input
+                id="adminPin"
+                name="adminPin"
+                type="password"
+                maxLength={6}
+                value={adminPin}
+                onChange={(e) => setAdminPin(e.target.value.replace(/\D/g, ''))}
+                className="w-full bg-slate-50 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-700/80 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-sm font-mono tracking-widest text-center rounded-xl py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                placeholder="••••"
+              />
             </div>
 
-            <div className="flex items-center justify-between pt-1">
+            {/* Resend Timer */}
+            <div className="flex justify-center text-xs">
               {timer > 0 ? (
-                <span className="text-xs text-slate-500">Resend in {timer}s</span>
+                <span className="text-slate-400 dark:text-slate-500">
+                  Resend OTP in <span className="font-mono text-slate-600 dark:text-slate-300">{timer}s</span>
+                </span>
               ) : (
                 <button
                   type="button"
                   onClick={() => handleRequestOtp()}
-                  className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 font-semibold"
+                  disabled={loading}
+                  className="text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300 font-semibold flex items-center gap-1 transition-colors cursor-pointer"
                 >
-                  <RefreshCw className="w-3 h-3" /> Resend OTP
+                  <RefreshCw className="w-3 h-3" /> Resend OTP Code
                 </button>
               )}
             </div>
 
             <button
               type="submit"
-              disabled={loading || otpCode.length < 4}
-              className="w-full group relative flex justify-center items-center py-3.5 px-4 border border-transparent rounded-xl text-sm font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 focus:ring-offset-slate-900 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-600/25 transition-all"
+              disabled={loading}
+              className="w-full group relative flex justify-center items-center py-3.5 px-4 border border-transparent rounded-xl text-sm font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 focus:ring-offset-slate-900 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-600/25 transition-all cursor-pointer"
             >
               {loading ? (
                 <Loader2 className="animate-spin h-5 w-5 text-white" />
@@ -297,7 +301,7 @@ function LoginForm() {
       </div>
 
       {/* Footer info */}
-      <p className="mt-8 text-center text-xs text-slate-500">
+      <p className="mt-8 text-center text-xs text-slate-400 dark:text-slate-500">
         &copy; {new Date().getFullYear()} Mubryx Home Services Platform. Confidential & Restricted.
       </p>
     </div>
@@ -306,10 +310,10 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen relative overflow-hidden bg-slate-950 flex flex-col justify-center items-center p-4 sm:p-6 lg:p-8">
+    <div className="min-h-screen relative overflow-hidden bg-slate-50 dark:bg-slate-950 flex flex-col justify-center items-center p-4 sm:p-6 lg:p-8 transition-colors">
       {/* Background Ambient Glow Lights */}
-      <div className="absolute -top-40 -left-40 w-96 h-96 bg-blue-600/20 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -top-40 -left-40 w-96 h-96 bg-blue-600/10 dark:bg-blue-600/20 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-indigo-600/10 dark:bg-indigo-600/20 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-sky-500/5 rounded-full blur-3xl pointer-events-none" />
 
       <Suspense
