@@ -79,10 +79,26 @@ export default function ServicesPage() {
       ]);
 
       if (catsRes.ok) {
-        setCategories(await catsRes.json());
+        const rawCats = await catsRes.json();
+        const cats = Array.isArray(rawCats)
+          ? rawCats
+          : Array.isArray(rawCats?.data)
+          ? rawCats.data
+          : Array.isArray(rawCats?.items)
+          ? rawCats.items
+          : [];
+        setCategories(cats);
       }
       if (servicesRes.ok) {
-        setServices(await servicesRes.json());
+        const rawServices = await servicesRes.json();
+        const servs = Array.isArray(rawServices)
+          ? rawServices
+          : Array.isArray(rawServices?.data)
+          ? rawServices.data
+          : Array.isArray(rawServices?.items)
+          ? rawServices.items
+          : [];
+        setServices(servs);
       }
     } catch (error) {
       console.error('Failed to load services data:', error);
@@ -157,8 +173,10 @@ export default function ServicesPage() {
     }
   };
 
-  const totalServices = services.length;
-  const activeServices = services.filter(s => s.isActive).length;
+  const safeCategories = Array.isArray(categories) ? categories : [];
+  const safeServices = Array.isArray(services) ? services : [];
+  const totalServices = safeServices.length;
+  const activeServices = safeServices.filter(s => s.isActive).length;
 
   return (
     <div className="space-y-4">
@@ -198,10 +216,10 @@ export default function ServicesPage() {
               : 'bg-slate-900/80 text-slate-400 border-slate-800 hover:bg-slate-800 hover:text-slate-200'
           }`}
         >
-          All Domains ({categories.reduce((acc, c) => acc + (c._count?.Service || 0), 0)})
+          All Domains ({safeCategories.reduce((acc, c) => acc + (c._count?.Service || 0), 0)})
         </button>
 
-        {categories.map((cat) => (
+        {safeCategories.map((cat) => (
           <button
             key={cat.id}
             onClick={() => setSelectedCategory(cat.id)}
@@ -239,7 +257,7 @@ export default function ServicesPage() {
         <div className="bg-slate-900/60 border border-slate-800 rounded-lg p-16 flex items-center justify-center">
           <Loader2 className="w-7 h-7 animate-spin text-blue-500" />
         </div>
-      ) : services.length === 0 ? (
+      ) : safeServices.length === 0 ? (
         <div className="bg-slate-900/60 border border-slate-800 rounded-lg p-16 text-center">
           <Layers className="w-10 h-10 text-slate-600 mx-auto mb-2 opacity-50" />
           <h3 className="text-sm font-semibold text-slate-300">No Catalog Services Found</h3>
@@ -249,7 +267,7 @@ export default function ServicesPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {services.map((service) => (
+          {safeServices.map((service) => (
             <div
               key={service.id}
               className={`bg-slate-900/60 rounded-lg border transition-all p-3.5 flex flex-col justify-between ${

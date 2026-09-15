@@ -7,11 +7,13 @@ export async function GET() {
       method: 'GET',
     });
     const data = await res.json().catch(() => []);
-    return NextResponse.json(data, { status: res.status });
+    const payload = data?.data || data;
+    const items = Array.isArray(payload) ? payload : Array.isArray(data?.items) ? data.items : [];
+    return NextResponse.json(items, { status: res.status });
   } catch (error: any) {
     return NextResponse.json(
-      { message: error?.message || 'Failed to fetch categories' },
-      { status: 500 },
+      [],
+      { status: 200 },
     );
   }
 }
