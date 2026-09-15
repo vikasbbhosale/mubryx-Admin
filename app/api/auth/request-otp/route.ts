@@ -23,6 +23,14 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({ phone: cleanPhone }),
     });
 
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      return NextResponse.json(
+        { message: 'Invalid response from authentication server.' },
+        { status: 502 }
+      );
+    }
+
     const data = await res.json().catch(() => ({}));
 
     if (!res.ok) {

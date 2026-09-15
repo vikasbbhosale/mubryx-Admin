@@ -38,6 +38,14 @@ export async function POST(req: NextRequest) {
       }),
     });
 
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      return NextResponse.json(
+        { message: 'Invalid response from authentication server.' },
+        { status: 502 }
+      );
+    }
+
     const data = await res.json().catch(() => ({}));
 
     if (!res.ok) {
@@ -52,6 +60,13 @@ export async function POST(req: NextRequest) {
     const accessToken = payload?.accessToken;
     const refreshToken = payload?.refreshToken;
     const user = payload?.user;
+
+    if (!accessToken) {
+      return NextResponse.json(
+        { message: 'Authentication failed. Missing token in response.' },
+        { status: 502 }
+      );
+    }
 
     const response = NextResponse.json({
       success: true,

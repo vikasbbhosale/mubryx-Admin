@@ -17,7 +17,8 @@ async function verifyAdminToken(token: string): Promise<boolean> {
     const { payload } = await jwtVerify(token, JWT_SECRET);
     const role = payload?.role;
     return role === 'ADMIN' || role === 'SUPER_ADMIN';
-  } catch {
+  } catch (err) {
+    console.error('JWT Verification Error:', err);
     return false;
   }
 }
@@ -25,7 +26,6 @@ async function verifyAdminToken(token: string): Promise<boolean> {
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Allow static assets, internal Next.js paths, and public auth endpoints
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api/auth/login') ||
@@ -37,7 +37,6 @@ export async function proxy(request: NextRequest) {
 
   const token = request.cookies.get('mubryx_admin_token')?.value;
 
-  // If visiting login page while already having an active verified token, redirect to dashboard
   if (pathname === '/login') {
     if (token) {
       const isValid = await verifyAdminToken(token);
@@ -48,7 +47,6 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // All other dashboard pages require a cryptographically verified administrator session
   if (!token) {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('from', pathname);
@@ -56,11 +54,11 @@ export async function proxy(request: NextRequest) {
   }
 
   const isValid = await verifyAdminToken(token);
+  
   if (!isValid) {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('from', pathname);
     const res = NextResponse.redirect(loginUrl);
-    // Invalidate forged/expired/tampered cookie
     res.cookies.delete('mubryx_admin_token');
     return res;
   }
