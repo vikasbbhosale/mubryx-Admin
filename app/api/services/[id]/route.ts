@@ -18,14 +18,16 @@ export async function PATCH(
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       return NextResponse.json(
-        { message: data.message || 'Failed to update service' },
+        { message: data.message || data?.error?.message || 'Failed to update service' },
         { status: res.status }
       );
     }
 
+    const service = data?.data || data?.service || data;
     return NextResponse.json({
       message: 'Service updated successfully',
-      service: data,
+      service,
+      success: true,
     });
   } catch (error) {
     console.error('Failed to proxy service update:', error);

@@ -19,7 +19,8 @@ import {
   TrendingUp,
   SlidersHorizontal,
   RefreshCw,
-  AlertTriangle
+  AlertTriangle,
+  CheckCircle2
 } from 'lucide-react';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { CaseDrawer } from '@/components/ui/CaseDrawer';
@@ -63,7 +64,10 @@ export default function ServicesPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'DISABLED'>('ALL');
   const [search, setSearch] = useState('');
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   
   // Drawer Editing
   const [editingService, setEditingService] = useState<ServiceItem | null>(null);
@@ -71,7 +75,15 @@ export default function ServicesPage() {
   const [editDiscountPrice, setEditDiscountPrice] = useState<string>('');
   const [editDuration, setEditDuration] = useState('');
   const [editIsPopular, setEditIsPopular] = useState(false);
+  const [editIsActive, setEditIsActive] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
 
   const fetchData = async (silent = false) => {
     try {
@@ -126,7 +138,9 @@ export default function ServicesPage() {
   };
 
   const handleToggleActive = async (service: ServiceItem) => {
+    if (togglingId === service.id) return;
     const newStatus = !service.isActive;
+    setTogglingId(service.id);
     // Optimistic update
     setServices(prev => prev.map(s => s.id === service.id ? { ...s, isActive: newStatus } : s));
 
@@ -137,12 +151,34 @@ export default function ServicesPage() {
         body: JSON.stringify({ isActive: newStatus })
       });
 
+      const data = await res.json().catch(() => ({}));
+
       if (!res.ok) {
+        // Rollback
         setServices(prev => prev.map(s => s.id === service.id ? { ...s, isActive: service.isActive } : s));
+        setToast({
+          type: 'error',
+          message: data?.message || `Failed to ${newStatus ? 'enable' : 'disable'} "${service.title}"`,
+        });
+      } else {
+        const updated = data?.service || data?.data;
+        if (updated && typeof updated.isActive === 'boolean') {
+          setServices(prev => prev.map(s => s.id === service.id ? { ...s, ...updated } : s));
+        }
+        setToast({
+          type: 'success',
+          message: `"${service.title}" is now ${newStatus ? 'enabled and live' : 'disabled and paused'}.`,
+        });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to toggle status', error);
-      fetchData(true);
+      setServices(prev => prev.map(s => s.id === service.id ? { ...s, isActive: service.isActive } : s));
+      setToast({
+        type: 'error',
+        message: error?.message || `Failed to ${newStatus ? 'enable' : 'disable'} "${service.title}"`,
+      });
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -152,6 +188,7 @@ export default function ServicesPage() {
     setEditDiscountPrice(service.discountPrice ? service.discountPrice.toString() : '');
     setEditDuration(service.duration);
     setEditIsPopular(service.isPopular);
+    setEditIsActive(service.isActive);
   };
 
   const handleSaveEdit = async () => {
@@ -166,17 +203,35 @@ export default function ServicesPage() {
           discountPrice: editDiscountPrice ? Number(editDiscountPrice) : null,
           duration: editDuration,
           isPopular: editIsPopular,
+          isActive: editIsActive,
         })
       });
 
+      const data = await res.json().catch(() => ({}));
+
       if (res.ok) {
+        const updated = data?.service || data?.data;
+        if (updated) {
+          setServices(prev => prev.map(s => s.id === editingService.id ? { ...s, ...updated } : s));
+        }
         setEditingService(null);
+        setToast({
+          type: 'success',
+          message: `Service "${editingService.title}" updated successfully.`,
+        });
         await fetchData(true);
       } else {
-        alert('Failed to update service');
+        setToast({
+          type: 'error',
+          message: data?.message || 'Failed to update service details',
+        });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to save edit', error);
+      setToast({
+        type: 'error',
+        message: error?.message || 'Failed to update service',
+      });
     } finally {
       setSaving(false);
     }
@@ -186,6 +241,12 @@ export default function ServicesPage() {
   const safeServices = Array.isArray(services) ? services : [];
   const totalServices = safeServices.length;
   const activeServices = safeServices.filter(s => s.isActive).length;
+
+  const displayedServices = safeServices.filter(s => {
+    if (statusFilter === 'ACTIVE') return s.isActive;
+    if (statusFilter === 'DISABLED') return !s.isActive;
+    return true;
+  });
 
   return (
     <div className="space-y-4 pb-12">
@@ -214,6 +275,32 @@ export default function ServicesPage() {
           </button>
         </div>
       </div>
+
+      {/* Toast Notification Banner */}
+      {toast && (
+        <div
+          className={`p-3 rounded-xl border flex items-center justify-between text-xs transition-all ${
+            toast.type === 'success'
+              ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
+              : 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {toast.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600 dark:text-rose-400" />
+            )}
+            <span className="font-medium">{toast.message}</span>
+          </div>
+          <button
+            onClick={() => setToast(null)}
+            className="p-1 hover:bg-black/5 dark:hover:bg-white/10 rounded cursor-pointer transition-colors"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Error state */}
       {error && (
@@ -272,8 +359,44 @@ export default function ServicesPage() {
           />
         </form>
 
-        <div className="text-xs text-slate-500 dark:text-slate-400 font-mono">
-          Live SKUs: <span className="text-emerald-600 dark:text-emerald-400 font-bold">{activeServices}</span> | Paused: <span className="text-slate-400 dark:text-slate-500 font-bold">{totalServices - activeServices}</span>
+        <div className="flex items-center gap-2 flex-wrap justify-between md:justify-end">
+          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/60 p-1 rounded-lg border border-slate-200 dark:border-slate-800 text-[11px]">
+            <button
+              type="button"
+              onClick={() => setStatusFilter('ALL')}
+              className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${
+                statusFilter === 'ALL'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs'
+                  : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              All ({totalServices})
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('ACTIVE')}
+              className={`px-2.5 py-1 rounded-md font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                statusFilter === 'ACTIVE'
+                  ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-2xs'
+                  : 'text-slate-500 hover:text-emerald-600 dark:hover:text-emerald-400'
+              }`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              Live ({activeServices})
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('DISABLED')}
+              className={`px-2.5 py-1 rounded-md font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                statusFilter === 'DISABLED'
+                  ? 'bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 shadow-2xs'
+                  : 'text-slate-500 hover:text-rose-600 dark:hover:text-rose-400'
+              }`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+              Disabled ({totalServices - activeServices})
+            </button>
+          </div>
         </div>
       </div>
 
@@ -282,21 +405,27 @@ export default function ServicesPage() {
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-16 flex items-center justify-center shadow-xs">
           <Loader2 className="w-7 h-7 animate-spin text-blue-500" />
         </div>
-      ) : safeServices.length === 0 ? (
+      ) : displayedServices.length === 0 ? (
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-16 text-center shadow-xs">
           <Layers className="w-10 h-10 text-slate-400 dark:text-slate-600 mx-auto mb-2 opacity-50" />
-          <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">No Catalog Services Found</h3>
+          <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+            {statusFilter === 'ALL'
+              ? 'No Catalog Services Found'
+              : statusFilter === 'ACTIVE'
+              ? 'No Active Services Found'
+              : 'No Disabled Services Found'}
+          </h3>
           <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-            Try adjusting your search terms or selecting a different category domain.
+            Try adjusting your search terms or selecting a different status/category filter.
           </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {safeServices.map((service) => (
+          {displayedServices.map((service) => (
             <div
               key={service.id}
               className={`bg-white dark:bg-slate-900 rounded-xl border transition-all p-3.5 flex flex-col justify-between shadow-xs ${
-                service.isActive ? 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700' : 'border-slate-200/60 dark:border-slate-800/40 opacity-50 bg-slate-50 dark:bg-slate-950/40'
+                service.isActive ? 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700' : 'border-slate-200/60 dark:border-slate-800/40 opacity-60 bg-slate-50 dark:bg-slate-950/40'
               }`}
             >
               <div>
@@ -367,14 +496,24 @@ export default function ServicesPage() {
                   {/* Toggle Active Switch */}
                   <button
                     onClick={() => handleToggleActive(service)}
-                    className={`px-2 py-1 rounded-lg text-[11px] font-semibold transition-colors flex items-center gap-1 cursor-pointer border ${
+                    disabled={togglingId === service.id}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors flex items-center gap-1.5 cursor-pointer border disabled:opacity-50 disabled:cursor-not-allowed ${
                       service.isActive
                         ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 border-rose-500/30'
                         : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 border-emerald-500/30'
                     }`}
+                    title={service.isActive ? 'Click to disable service' : 'Click to enable service'}
                   >
-                    <Power className="w-2.5 h-2.5" />
-                    {service.isActive ? 'Disable' : 'Enable'}
+                    {togglingId === service.id ? (
+                      <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                    ) : (
+                      <Power className="w-2.5 h-2.5" />
+                    )}
+                    {togglingId === service.id
+                      ? 'Updating...'
+                      : service.isActive
+                      ? 'Disable'
+                      : 'Enable'}
                   </button>
                 </div>
               </div>
@@ -389,7 +528,7 @@ export default function ServicesPage() {
         onClose={() => setEditingService(null)}
         title="Configure Service SKU"
         subtitle={editingService?.title || ''}
-        badge={editingService && <StatusBadge status={editingService.isActive ? 'ACTIVE' : 'SUSPENDED'} size="sm" />}
+        badge={editingService && <StatusBadge status={editIsActive ? 'ACTIVE' : 'SUSPENDED'} size="sm" />}
         actions={
           <div className="flex items-center justify-end gap-2 w-full">
             <button
@@ -414,6 +553,28 @@ export default function ServicesPage() {
             <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3 space-y-1">
               <span className="text-[10px] text-slate-500 font-semibold uppercase">Category Domain</span>
               <p className="font-bold text-slate-900 dark:text-slate-200">{editingService.Category?.name || 'General Service'}</p>
+            </div>
+
+            {/* Availability / Status Toggle */}
+            <div className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
+              <div>
+                <span className="font-semibold text-slate-900 dark:text-white block text-xs">Marketplace Availability</span>
+                <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                  {editIsActive ? 'Service is live and visible to customers' : 'Service is disabled and hidden from marketplace'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditIsActive(!editIsActive)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+                  editIsActive
+                    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
+                    : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30 hover:bg-rose-500/20'
+                }`}
+              >
+                <Power className="w-3 h-3" />
+                {editIsActive ? 'Active' : 'Disabled'}
+              </button>
             </div>
 
             <div className="grid grid-cols-2 gap-3">

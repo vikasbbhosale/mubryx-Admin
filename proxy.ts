@@ -48,6 +48,12 @@ export async function proxy(request: NextRequest) {
   }
 
   if (!token) {
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json(
+        { message: 'Unauthorized. Administrator session required.' },
+        { status: 401 },
+      );
+    }
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('from', pathname);
     return NextResponse.redirect(loginUrl);
@@ -56,6 +62,14 @@ export async function proxy(request: NextRequest) {
   const isValid = await verifyAdminToken(token);
   
   if (!isValid) {
+    if (pathname.startsWith('/api/')) {
+      const res = NextResponse.json(
+        { message: 'Session expired or unauthorized role.' },
+        { status: 401 },
+      );
+      res.cookies.delete('mubryx_admin_token');
+      return res;
+    }
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('from', pathname);
     const res = NextResponse.redirect(loginUrl);
