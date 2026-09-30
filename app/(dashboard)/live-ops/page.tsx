@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { 
   Activity, 
@@ -28,11 +28,13 @@ interface BookingItem {
   id: string;
   bookingNumber: string;
   status: string;
+  paymentStatus?: string;
   totalAmount: number;
   snapshotAddress: string;
   snapshotCity: string | null;
   scheduledAt: string | null;
   createdAt: string;
+  updatedAt?: string;
   customer?: {
     id: string;
     name: string | null;
@@ -62,6 +64,9 @@ export default function LiveOperationsPage() {
   const [cancelBookingTarget, setCancelBookingTarget] = useState<BookingItem | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
+  const selectedBookingRef = useRef<BookingItem | null>(null);
+  selectedBookingRef.current = selectedBooking;
+
   const fetchLiveOps = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     setRefreshing(true);
@@ -73,9 +78,12 @@ export default function LiveOperationsPage() {
         const data = await res.json();
         const items = Array.isArray(data) ? data : data?.items || [];
         setBookings(items);
-        if (selectedBooking) {
-          const updated = items.find((b: BookingItem) => b.id === selectedBooking.id);
-          if (updated) setSelectedBooking(updated);
+        const currentSelected = selectedBookingRef.current;
+        if (currentSelected) {
+          const updated = items.find((b: BookingItem) => b.id === currentSelected.id);
+          if (updated && (updated.status !== currentSelected.status || updated.paymentStatus !== currentSelected.paymentStatus)) {
+            setSelectedBooking(updated);
+          }
         }
       } else {
         throw new Error(`Failed to load live dispatch queue (${res.status})`);
@@ -87,7 +95,7 @@ export default function LiveOperationsPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [selectedBooking]);
+  }, []);
 
   useEffect(() => {
     fetchLiveOps();

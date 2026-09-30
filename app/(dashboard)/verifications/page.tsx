@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { 
   UserCheck, 
@@ -43,6 +43,7 @@ interface TechnicianReview {
   experienceYears?: number | null;
   onboardingStatus: string;
   createdAt: string;
+  updatedAt?: string;
   user?: {
     id: string;
     phone: string;
@@ -71,6 +72,9 @@ export default function VerificationsPage() {
   
   const [rejectTarget, setRejectTarget] = useState<TechnicianReview | null>(null);
 
+  const selectedTechRef = useRef<TechnicianReview | null>(null);
+  selectedTechRef.current = selectedTech;
+
   const fetchQueue = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     setRefreshing(true);
@@ -81,9 +85,12 @@ export default function VerificationsPage() {
         const data = await res.json();
         const items = Array.isArray(data) ? data : data?.items || [];
         setTechnicians(items);
-        if (selectedTech) {
-          const updated = items.find((t: TechnicianReview) => t.id === selectedTech.id);
-          if (updated) setSelectedTech(updated);
+        const currentSelected = selectedTechRef.current;
+        if (currentSelected) {
+          const updated = items.find((t: TechnicianReview) => t.id === currentSelected.id);
+          if (updated && (updated.updatedAt !== currentSelected.updatedAt || updated.onboardingStatus !== currentSelected.onboardingStatus)) {
+            setSelectedTech(updated);
+          }
         }
       } else {
         throw new Error(`Failed to load verification queue (${res.status})`);
@@ -95,7 +102,7 @@ export default function VerificationsPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [selectedTech]);
+  }, []);
 
   useEffect(() => {
     fetchQueue();

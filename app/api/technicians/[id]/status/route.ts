@@ -13,7 +13,7 @@ export async function PATCH(
       method: 'PATCH',
       body: JSON.stringify({
         status: body.status,
-        reason: body.reason,
+        reason: body.reason || body.reviewNotes,
       }),
     });
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { 
   Users, 
@@ -70,6 +70,7 @@ interface Technician {
   rating?: number | null;
   totalRatings?: number;
   createdAt: string;
+  updatedAt?: string;
   user?: {
     id: string;
     phone: string;
@@ -96,6 +97,9 @@ export default function TechniciansPage() {
   const [suspendTarget, setSuspendTarget] = useState<Technician | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
+  const selectedTechRef = useRef<Technician | null>(null);
+  selectedTechRef.current = selectedTech;
+
   const fetchTechnicians = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     setRefreshing(true);
@@ -111,9 +115,12 @@ export default function TechniciansPage() {
         const data = await res.json();
         const items = Array.isArray(data) ? data : data?.items || [];
         setTechnicians(items);
-        if (selectedTech) {
-          const updated = items.find((t: Technician) => t.id === selectedTech.id);
-          if (updated) setSelectedTech(updated);
+        const currentSelected = selectedTechRef.current;
+        if (currentSelected) {
+          const updated = items.find((t: Technician) => t.id === currentSelected.id);
+          if (updated && (updated.updatedAt !== currentSelected.updatedAt || updated.onboardingStatus !== currentSelected.onboardingStatus)) {
+            setSelectedTech(updated);
+          }
         }
       } else {
         throw new Error(`Failed to load technicians (${res.status})`);
@@ -125,7 +132,7 @@ export default function TechniciansPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [statusFilter, search, selectedTech]);
+  }, [statusFilter, search]);
 
   useEffect(() => {
     fetchTechnicians();

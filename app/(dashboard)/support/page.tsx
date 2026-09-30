@@ -142,8 +142,8 @@ export default function SupportPage() {
         });
 
         setIncidents(mapped);
-        if (mapped.length > 0 && !selectedIncidentId) {
-          setSelectedIncidentId(mapped[0].id);
+        if (mapped.length > 0) {
+          setSelectedIncidentId((prev) => prev || mapped[0].id);
         }
       } else {
         throw new Error(`Failed to load incident stream (${res.status})`);
@@ -155,7 +155,7 @@ export default function SupportPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [selectedIncidentId]);
+  }, []);
 
   useEffect(() => {
     fetchIncidentsFromBookings();

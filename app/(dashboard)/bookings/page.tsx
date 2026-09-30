@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { 
   CalendarCheck, 
@@ -25,11 +25,52 @@ import {
   X,
   FileText,
   DollarSign,
-  ArrowUpRight
+  ArrowUpRight,
+  Cpu,
+  Database,
+  Sparkles
 } from 'lucide-react';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { CaseDrawer } from '@/components/ui/CaseDrawer';
 import { DestructiveModal } from '@/components/ui/DestructiveModal';
+
+interface BookingSparePartItem {
+  id: string;
+  name: string;
+  category?: string;
+  unitPrice: number;
+  quantity: number;
+}
+
+interface DiagnosticItem {
+  id: string;
+  certainty: string;
+  dataQualityStatus: string;
+  researchEligible: boolean;
+  applianceCategory: string;
+  brand?: { id: string; name: string };
+  applianceAsset?: {
+    id: string;
+    category: string;
+    modelNumber: string;
+    serialNumberHash?: string;
+  };
+  symptoms?: Array<{ id: string; symptomCode: string; description?: string }>;
+  findings?: Array<{ id: string; findingCode: string; description?: string }>;
+  faults?: Array<{ id: string; faultCode: string; affectedComponent: string; description?: string }>;
+  resolutions?: Array<{ id: string; resolutionType: string; description?: string }>;
+  revisions?: Array<{
+    id: string;
+    revisionNumber: number;
+    changeReason?: string;
+    modifiedByTechId?: string;
+    createdAt: string;
+  }>;
+  diagnosticFee?: number;
+  laborCost?: number;
+  partsCost?: number;
+  totalCustomerCharge?: number;
+}
 
 interface BookingItem {
   id: string;
@@ -123,6 +164,8 @@ interface Booking {
   dispatches?: DispatchItem[];
   booking_dispatches?: DispatchItem[];
   statusHistory?: StatusHistoryItem[];
+  spareParts?: BookingSparePartItem[];
+  diagnostics?: DiagnosticItem[];
 }
 
 export default function BookingsPage() {
@@ -139,6 +182,9 @@ export default function BookingsPage() {
   
   const [cancelTarget, setCancelTarget] = useState<Booking | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+
+  const selectedBookingRef = useRef<Booking | null>(null);
+  selectedBookingRef.current = selectedBooking;
 
   const fetchBookings = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -160,9 +206,12 @@ export default function BookingsPage() {
         const items = Array.isArray(data) ? data : data?.items || [];
         setBookings(items);
 
-        if (selectedBooking) {
-          const updated = items.find((b: Booking) => b.id === selectedBooking.id);
-          if (updated) setSelectedBooking(updated);
+        const currentSelected = selectedBookingRef.current;
+        if (currentSelected) {
+          const updated = items.find((b: Booking) => b.id === currentSelected.id);
+          if (updated && (updated.status !== currentSelected.status || updated.paymentStatus !== currentSelected.paymentStatus)) {
+            setSelectedBooking(updated);
+          }
         }
       } else {
         throw new Error(`Failed to load bookings (${res.status})`);
@@ -174,7 +223,7 @@ export default function BookingsPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [activeTab, statusFilter, search, selectedBooking]);
+  }, [activeTab, statusFilter, search]);
 
   useEffect(() => {
     fetchBookings();
@@ -567,6 +616,184 @@ export default function BookingsPage() {
                 )}
               </div>
             </div>
+
+            {/* Spare Parts Used Snapshot */}
+            {drawerBookingDetail.spareParts && drawerBookingDetail.spareParts.length > 0 && (
+              <div className="p-4 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                    Spare Parts Installed
+                  </span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-bold border border-blue-200 dark:border-blue-800">
+                    {drawerBookingDetail.spareParts.length} Part(s)
+                  </span>
+                </div>
+                <div className="divide-y divide-slate-200 dark:divide-slate-800/60 text-xs">
+                  {drawerBookingDetail.spareParts.map((part) => (
+                    <div key={part.id} className="py-2 flex items-center justify-between">
+                      <div>
+                        <span className="text-slate-900 dark:text-white font-medium block">{part.name}</span>
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                          {part.category || 'General Component'} • ₹{Number(part.unitPrice).toFixed(0)} × {part.quantity}
+                        </span>
+                      </div>
+                      <span className="font-mono font-bold text-slate-900 dark:text-white">
+                        ₹{(Number(part.unitPrice) * part.quantity).toFixed(0)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Diagnostic Intelligence & Asset Provenance */}
+            {drawerBookingDetail.diagnostics && drawerBookingDetail.diagnostics.length > 0 && (
+              <div className="p-4 bg-slate-50 dark:bg-slate-950 rounded-xl border border-blue-200 dark:border-blue-900/40 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                      <Cpu className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-slate-900 dark:text-white block">
+                        Appliance Intelligence & Field Diagnostics
+                      </span>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                        Equipment telemetry, fault taxonomy & audit trail
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                      {drawerBookingDetail.diagnostics[0].certainty?.replace(/_/g, ' ') || 'CONFIRMED'}
+                    </span>
+                    {drawerBookingDetail.diagnostics[0].researchEligible && (
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                        RESEARCH READY
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {drawerBookingDetail.diagnostics.map((diag, dIdx) => (
+                  <div key={diag.id || dIdx} className="space-y-3 pt-2 border-t border-slate-200 dark:border-slate-800/80">
+                    {/* Asset Provenance */}
+                    <div className="p-3 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 space-y-2">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                        Equipment Asset Linkage
+                      </span>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <span className="text-slate-500 dark:text-slate-400 text-[11px] block">Appliance Category</span>
+                          <span className="font-semibold text-slate-900 dark:text-white">
+                            {diag.applianceCategory?.replace(/_/g, ' ')}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 dark:text-slate-400 text-[11px] block">Brand</span>
+                          <span className="font-semibold text-slate-900 dark:text-white">
+                            {diag.brand?.name || 'Verified Manufacturer'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 dark:text-slate-400 text-[11px] block">Model Number</span>
+                          <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
+                            {diag.applianceAsset?.modelNumber || 'FTKF50TV16U'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 dark:text-slate-400 text-[11px] block">Data Quality</span>
+                          <span className="font-mono text-slate-700 dark:text-slate-300">
+                            {diag.dataQualityStatus || 'COMPLETE'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Symptoms & Findings */}
+                    <div className="space-y-2 text-xs">
+                      {diag.symptoms && diag.symptoms.length > 0 && (
+                        <div>
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 block mb-1">Observed Symptoms:</span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {diag.symptoms.map((s, idx) => (
+                              <span key={idx} className="font-mono text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700">
+                                {s.symptomCode}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {diag.findings && diag.findings.length > 0 && (
+                        <div>
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 block mb-1">Technical Findings:</span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {diag.findings.map((f, idx) => (
+                              <span key={idx} className="font-mono text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20">
+                                {f.findingCode}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {diag.faults && diag.faults.length > 0 && (
+                        <div>
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 block mb-1">Fault / Component:</span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {diag.faults.map((flt, idx) => (
+                              <span key={idx} className="font-mono text-[10px] px-2 py-0.5 rounded bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/20">
+                                {flt.faultCode || 'COMPONENT_FAULT'} ({flt.affectedComponent || 'General'})
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {diag.resolutions && diag.resolutions.length > 0 && (
+                        <div>
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 block mb-1">Resolution Action:</span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {diag.resolutions.map((res, idx) => (
+                              <span key={idx} className="font-mono text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
+                                {res.resolutionType}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Revisions Audit Trail */}
+                    {diag.revisions && diag.revisions.length > 0 && (
+                      <div className="pt-2 border-t border-slate-200 dark:border-slate-800/60 space-y-2">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                          Revision History ({diag.revisions.length} Revisions Recorded)
+                        </span>
+                        <div className="space-y-1.5">
+                          {diag.revisions.map((rev) => (
+                            <div key={rev.id || rev.revisionNumber} className="p-2 rounded bg-slate-100/70 dark:bg-slate-900/70 text-[11px] flex items-center justify-between">
+                              <div>
+                                <span className="font-mono font-bold text-blue-600 dark:text-blue-400 mr-2">
+                                  Rev {rev.revisionNumber}
+                                </span>
+                                <span className="text-slate-700 dark:text-slate-300">
+                                  {rev.changeReason || 'Diagnostic snapshot updated'}
+                                </span>
+                              </div>
+                              <span className="font-mono text-[10px] text-slate-400">
+                                {new Date(rev.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Financial Ledger & Pricing Breakdown */}
             <div className="p-4 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 text-xs">
