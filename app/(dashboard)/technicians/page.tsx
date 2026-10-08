@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import { 
   Users, 
@@ -30,6 +30,7 @@ import {
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { CaseDrawer } from '@/components/ui/CaseDrawer';
 import { DestructiveModal } from '@/components/ui/DestructiveModal';
+import { queryClient } from '@/lib/query-client';
 
 interface SkillItem {
   id: string;
@@ -84,13 +85,30 @@ interface Technician {
   wallet?: { availableBalance: number };
 }
 
+const getTechniciansCacheKey = (status: string, q: string) =>
+  `technicians:list:${status}:${q.trim().toLowerCase()}`;
+
 export default function TechniciansPage() {
-  const [technicians, setTechnicians] = useState<Technician[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
+  const [search, setSearch] = useState('');
+
+  const [technicians, setTechnicians] = useState<Technician[]>(() => {
+    const cached = queryClient.getQueryData<any>(getTechniciansCacheKey('ALL', ''));
+    if (Array.isArray(cached)) return cached;
+    if (Array.isArray(cached?.items)) return cached.items;
+    return [];
+  });
+  const [loading, setLoading] = useState(() => {
+    const cached = queryClient.getQueryData<any>(getTechniciansCacheKey('ALL', ''));
+    return !cached;
+  });
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('ALL');
+  const [metrics, setMetrics] = useState<{ total: number; approved: number; pending: number; suspended: number } | null>(() => {
+    const cachedList = queryClient.getQueryData<any>(getTechniciansCacheKey('ALL', ''));
+    if (cachedList?.metrics) return cachedList.metrics;
+    return queryClient.getQueryData<any>('technicians:metrics') || null;
+  });
   const [selectedTech, setSelectedTech] = useState<Technician | null>(null);
   const [techDetailLoading, setTechDetailLoading] = useState(false);
   
@@ -100,8 +118,10 @@ export default function TechniciansPage() {
   const selectedTechRef = useRef<Technician | null>(null);
   selectedTechRef.current = selectedTech;
 
-  const fetchTechnicians = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
+  const fetchTechnicians = useCallback(async (silent = false, forceRefresh = false, signal?: AbortSignal) => {
+    const cacheKey = getTechniciansCacheKey(statusFilter, search);
+    const hasCached = !!queryClient.getQueryData(cacheKey);
+    if (!silent && !hasCached) setLoading(true);
     setRefreshing(true);
     setError(null);
     try {
@@ -109,23 +129,39 @@ export default function TechniciansPage() {
       if (statusFilter !== 'ALL') params.set('status', statusFilter);
       if (search.trim()) params.set('search', search.trim());
       params.set('limit', '50');
+      if (forceRefresh) params.set('refresh', 'true');
 
-      const res = await fetch(`/api/technicians?${params.toString()}`);
-      if (res.ok) {
-        const data = await res.json();
-        const items = Array.isArray(data) ? data : data?.items || [];
-        setTechnicians(items);
-        const currentSelected = selectedTechRef.current;
-        if (currentSelected) {
-          const updated = items.find((t: Technician) => t.id === currentSelected.id);
-          if (updated && (updated.updatedAt !== currentSelected.updatedAt || updated.onboardingStatus !== currentSelected.onboardingStatus)) {
-            setSelectedTech(updated);
-          }
+      const data = await queryClient.fetchQuery<any>(
+        cacheKey,
+        async (sig) => {
+          const res = await fetch(`/api/technicians?${params.toString()}`, { signal: sig });
+          if (!res.ok) throw new Error(`Failed to load technicians (${res.status})`);
+          const json = await res.json();
+          const items = Array.isArray(json) ? json : json?.items || [];
+          return { items, metrics: json?.metrics };
+        },
+        {
+          staleTime: 20000,
+          forceRefresh,
+          signal,
         }
-      } else {
-        throw new Error(`Failed to load technicians (${res.status})`);
+      );
+      const items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+      setTechnicians(items);
+      if (data?.metrics) {
+        setMetrics(data.metrics);
+        queryClient.setCache('technicians:metrics', data.metrics);
+      }
+
+      const currentSelected = selectedTechRef.current;
+      if (currentSelected) {
+        const updated = items.find((t: Technician) => t.id === currentSelected.id);
+        if (updated && (updated.updatedAt !== currentSelected.updatedAt || updated.onboardingStatus !== currentSelected.onboardingStatus)) {
+          setSelectedTech(updated);
+        }
       }
     } catch (e: any) {
+      if (e?.name === 'AbortError') return;
       console.error('Failed to load technicians', e);
       setError(e?.message || 'Error connecting to workforce management API');
     } finally {
@@ -135,19 +171,29 @@ export default function TechniciansPage() {
   }, [statusFilter, search]);
 
   useEffect(() => {
-    fetchTechnicians();
+    const controller = new AbortController();
+    fetchTechnicians(false, false, controller.signal);
+    return () => {
+      controller.abort();
+    };
   }, [fetchTechnicians]);
 
   const openTechDrawer = async (tech: Technician) => {
     setSelectedTech(tech);
     setTechDetailLoading(true);
     try {
-      const res = await fetch(`/api/technicians/${tech.id}`);
-      if (res.ok) {
-        const full = await res.json();
-        setSelectedTech(full);
-      }
-    } catch (e) {
+      const full = await queryClient.fetchQuery<Technician>(
+        `technician:detail:${tech.id}`,
+        async (sig) => {
+          const res = await fetch(`/api/technicians/${tech.id}`, { signal: sig });
+          if (!res.ok) throw new Error(`Failed to fetch full technician profile (${res.status})`);
+          return res.json();
+        },
+        { staleTime: 30000 }
+      );
+      setSelectedTech(full);
+    } catch (e: any) {
+      if (e?.name === 'AbortError') return;
       console.error('Failed to fetch full technician profile', e);
     } finally {
       setTechDetailLoading(false);
@@ -168,7 +214,11 @@ export default function TechniciansPage() {
       });
       if (res.ok) {
         setSuspendTarget(null);
-        fetchTechnicians();
+        queryClient.invalidateQuery(`technician:detail:${target.id}`);
+        queryClient.invalidateQueriesByPrefix('technicians:list');
+        queryClient.invalidateQuery('technicians:metrics');
+        queryClient.invalidateQuery('dashboard:operations-overview');
+        fetchTechnicians(true, true);
       }
     } catch (e) {
       console.error('Status update failed', e);
@@ -177,11 +227,14 @@ export default function TechniciansPage() {
     }
   };
 
-  // Status breakdown metrics
-  const countTotal = technicians.length;
-  const countApproved = technicians.filter((t) => t.onboardingStatus === 'APPROVED').length;
-  const countPending = technicians.filter((t) => ['SUBMITTED', 'UNDER_REVIEW'].includes(t.onboardingStatus)).length;
-  const countSuspended = technicians.filter((t) => t.onboardingStatus === 'SUSPENDED').length;
+  // Safely memoize array slice to prevent any object/type collision
+  const techList = useMemo(() => (Array.isArray(technicians) ? technicians : []), [technicians]);
+
+  // Status breakdown metrics (global from backend if available, fallback to local slice)
+  const countTotal = metrics?.total ?? techList.length;
+  const countApproved = metrics?.approved ?? techList.filter((t) => t.onboardingStatus === 'APPROVED').length;
+  const countPending = metrics?.pending ?? techList.filter((t) => ['SUBMITTED', 'UNDER_REVIEW'].includes(t.onboardingStatus)).length;
+  const countSuspended = metrics?.suspended ?? techList.filter((t) => t.onboardingStatus === 'SUSPENDED').length;
 
   return (
     <div className="space-y-4 pb-12">
@@ -199,7 +252,7 @@ export default function TechniciansPage() {
 
         <div className="flex items-center gap-2.5 self-start sm:self-auto">
           <button
-            onClick={() => fetchTechnicians()}
+            onClick={() => fetchTechnicians(false, true)}
             disabled={refreshing}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer shadow-xs"
           >
@@ -224,7 +277,7 @@ export default function TechniciansPage() {
             <span>{error}</span>
           </div>
           <button
-            onClick={() => fetchTechnicians()}
+            onClick={() => fetchTechnicians(false, true)}
             className="px-2.5 py-1 rounded bg-rose-600 hover:bg-rose-500 text-white font-medium text-[11px] transition-colors"
           >
             Retry
@@ -240,7 +293,7 @@ export default function TechniciansPage() {
           </span>
           <div className="mt-1 flex items-baseline gap-2">
             <span className="text-2xl font-black text-slate-900 dark:text-white font-mono">
-              {loading && technicians.length === 0 ? '-' : countTotal}
+              {loading && techList.length === 0 ? '-' : countTotal}
             </span>
             <span className="text-[10px] text-slate-400 dark:text-slate-500">partners</span>
           </div>
@@ -252,7 +305,7 @@ export default function TechniciansPage() {
           </span>
           <div className="mt-1 flex items-baseline gap-2">
             <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
-              {loading && technicians.length === 0 ? '-' : countApproved}
+              {loading && techList.length === 0 ? '-' : countApproved}
             </span>
             <span className="text-[10px] text-emerald-600/80 dark:text-emerald-500/80">ready</span>
           </div>
@@ -264,7 +317,7 @@ export default function TechniciansPage() {
           </span>
           <div className="mt-1 flex items-baseline gap-2">
             <span className="text-2xl font-black text-amber-500 dark:text-amber-400 font-mono">
-              {loading && technicians.length === 0 ? '-' : countPending}
+              {loading && techList.length === 0 ? '-' : countPending}
             </span>
             <span className="text-[10px] text-amber-600/80 dark:text-amber-500/80">awaiting</span>
           </div>
@@ -276,7 +329,7 @@ export default function TechniciansPage() {
           </span>
           <div className="mt-1 flex items-baseline gap-2">
             <span className="text-2xl font-black text-rose-600 dark:text-rose-400 font-mono">
-              {loading && technicians.length === 0 ? '-' : countSuspended}
+              {loading && techList.length === 0 ? '-' : countSuspended}
             </span>
             <span className="text-[10px] text-rose-600/80 dark:text-rose-500/80">locked</span>
           </div>
@@ -301,7 +354,7 @@ export default function TechniciansPage() {
           onChange={(e) => setStatusFilter(e.target.value)}
           className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-300 focus:outline-none focus:border-blue-500 cursor-pointer w-full sm:w-auto"
         >
-          <option value="ALL">All Statuses ({technicians.length})</option>
+          <option value="ALL">All Statuses ({techList.length})</option>
           <option value="APPROVED">Approved Only</option>
           <option value="UNDER_REVIEW">Under Review</option>
           <option value="SUBMITTED">Submitted</option>
@@ -333,14 +386,14 @@ export default function TechniciansPage() {
                     <span>Loading technician profiles...</span>
                   </td>
                 </tr>
-              ) : technicians.length === 0 ? (
+              ) : techList.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-slate-400 dark:text-slate-500">
                     No technician records match current criteria.
                   </td>
                 </tr>
               ) : (
-                technicians.map((t) => (
+                techList.map((t) => (
                   <tr
                     key={t.id}
                     onClick={() => openTechDrawer(t)}

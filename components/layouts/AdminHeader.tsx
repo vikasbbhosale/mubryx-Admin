@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { CommandPalette } from '@/components/ui/CommandPalette';
 import { useTheme } from '@/components/providers/ThemeProvider';
+import { queryClient } from '@/lib/query-client';
 
 interface AdminProfile {
   id?: string;
@@ -43,14 +44,27 @@ export default function AdminHeader() {
   const themeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetch('/api/auth/me')
-      .then((res) => res.json())
+    let unmounted = false;
+    queryClient
+      .fetchQuery(
+        'auth:me',
+        async (signal) => {
+          const res = await fetch('/api/auth/me', { signal });
+          if (!res.ok) throw new Error('Failed to load profile');
+          return res.json();
+        },
+        { staleTime: 300000 },
+      )
       .then((data) => {
-        if (data?.user) {
+        if (!unmounted && data?.user) {
           setProfile(data.user);
         }
       })
       .catch(() => {});
+
+    return () => {
+      unmounted = true;
+    };
   }, []);
 
   // Global hotkey listener for Cmd+K / Ctrl+K

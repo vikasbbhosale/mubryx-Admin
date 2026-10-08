@@ -73,7 +73,10 @@ export async function GET(request: NextRequest) {
       })),
     }));
 
-    return NextResponse.json(mapped);
+    return NextResponse.json({
+      items: mapped,
+      metrics: payload?.metrics,
+    });
   } catch (error: any) {
     return NextResponse.json(
       { message: error?.message || 'Failed to fetch technicians' },

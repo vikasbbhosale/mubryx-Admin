@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import { 
   CalendarCheck, 
@@ -168,14 +168,25 @@ interface Booking {
   diagnostics?: DiagnosticItem[];
 }
 
+import { queryClient } from '@/lib/query-client';
+
+const getBookingsCacheKey = (tab: string, status: string, q: string) =>
+  `bookings:list:${tab}:${status}:${q.trim().toLowerCase()}`;
+
 export default function BookingsPage() {
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState<'ALL' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED'>('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [search, setSearch] = useState('');
+
+  const [bookings, setBookings] = useState<Booking[]>(() => {
+    const cached = queryClient.getQueryData<any>(getBookingsCacheKey('ALL', 'ALL', ''));
+    if (Array.isArray(cached)) return cached;
+    if (Array.isArray(cached?.items)) return cached.items;
+    return [];
+  });
+  const [loading, setLoading] = useState(() => !queryClient.getQueryData(getBookingsCacheKey('ALL', 'ALL', '')));
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [drawerBookingDetail, setDrawerBookingDetail] = useState<Booking | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -186,8 +197,10 @@ export default function BookingsPage() {
   const selectedBookingRef = useRef<Booking | null>(null);
   selectedBookingRef.current = selectedBooking;
 
-  const fetchBookings = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
+  const fetchBookings = useCallback(async (silent = false, forceRefresh = false, signal?: AbortSignal) => {
+    const cacheKey = getBookingsCacheKey(activeTab, statusFilter, search);
+    const hasCached = !!queryClient.getQueryData(cacheKey);
+    if (!silent && !hasCached) setLoading(true);
     setRefreshing(true);
     setError(null);
     try {
@@ -199,24 +212,34 @@ export default function BookingsPage() {
       if (statusFilter !== 'ALL') params.set('status', statusFilter);
       if (search.trim()) params.set('search', search.trim());
       params.set('limit', '50');
+      if (forceRefresh) params.set('refresh', 'true');
 
-      const res = await fetch(`/api/bookings?${params.toString()}`);
-      if (res.ok) {
-        const data = await res.json();
-        const items = Array.isArray(data) ? data : data?.items || [];
-        setBookings(items);
-
-        const currentSelected = selectedBookingRef.current;
-        if (currentSelected) {
-          const updated = items.find((b: Booking) => b.id === currentSelected.id);
-          if (updated && (updated.status !== currentSelected.status || updated.paymentStatus !== currentSelected.paymentStatus)) {
-            setSelectedBooking(updated);
-          }
+      const items = await queryClient.fetchQuery<any>(
+        cacheKey,
+        async (sig) => {
+          const res = await fetch(`/api/bookings?${params.toString()}`, { signal: sig });
+          if (!res.ok) throw new Error(`Failed to load bookings (${res.status})`);
+          const data = await res.json();
+          return Array.isArray(data) ? data : data?.items || [];
+        },
+        {
+          staleTime: 15000,
+          forceRefresh,
+          signal,
         }
-      } else {
-        throw new Error(`Failed to load bookings (${res.status})`);
+      );
+      const safeItems = Array.isArray(items) ? items : Array.isArray(items?.items) ? items.items : [];
+      setBookings(safeItems);
+
+      const currentSelected = selectedBookingRef.current;
+      if (currentSelected) {
+        const updated = safeItems.find((b: Booking) => b.id === currentSelected.id);
+        if (updated && (updated.status !== currentSelected.status || updated.paymentStatus !== currentSelected.paymentStatus)) {
+          setSelectedBooking(updated);
+        }
       }
     } catch (e: any) {
+      if (e?.name === 'AbortError') return;
       console.error('Error loading bookings', e);
       setError(e?.message || 'Error fetching bookings from order management API');
     } finally {
@@ -226,21 +249,31 @@ export default function BookingsPage() {
   }, [activeTab, statusFilter, search]);
 
   useEffect(() => {
-    fetchBookings();
+    const controller = new AbortController();
+    fetchBookings(false, false, controller.signal);
+    return () => {
+      controller.abort();
+    };
   }, [fetchBookings]);
 
-  // When a booking is selected for detailed inspection, fetch full booking details
+  // When a booking is selected for detailed inspection, fetch full booking details with caching
   const openBookingDrawer = async (b: Booking) => {
     setSelectedBooking(b);
     setDrawerBookingDetail(b);
     setDetailLoading(true);
     try {
-      const res = await fetch(`/api/bookings/${b.id}`);
-      if (res.ok) {
-        const full = await res.json();
-        setDrawerBookingDetail(full);
-      }
-    } catch (e) {
+      const detail = await queryClient.fetchQuery<Booking>(
+        `booking:detail:${b.id}`,
+        async (sig) => {
+          const res = await fetch(`/api/bookings/${b.id}`, { signal: sig });
+          if (!res.ok) throw new Error(`Failed to load full booking details (${res.status})`);
+          return res.json();
+        },
+        { staleTime: 30000 }
+      );
+      setDrawerBookingDetail(detail);
+    } catch (e: any) {
+      if (e?.name === 'AbortError') return;
       console.error('Failed to load full booking details', e);
     } finally {
       setDetailLoading(false);
@@ -262,7 +295,11 @@ export default function BookingsPage() {
           setSelectedBooking(null);
           setDrawerBookingDetail(null);
         }
-        fetchBookings();
+        queryClient.invalidateQuery(`booking:detail:${cancelTarget.id}`);
+        queryClient.invalidateQueriesByPrefix('bookings:list');
+        queryClient.invalidateQuery('bookings:live-ops');
+        queryClient.invalidateQuery('dashboard:operations-overview');
+        fetchBookings(true, true);
       }
     } catch (e) {
       console.error('Error cancelling booking', e);
@@ -276,6 +313,8 @@ export default function BookingsPage() {
   const rawHistory = drawerBookingDetail?.statusHistory || [];
   const customer = drawerBookingDetail?.customer || drawerBookingDetail?.users;
   const technician = drawerBookingDetail?.technician || drawerBookingDetail?.technician_profiles;
+
+  const bookingList = useMemo<Booking[]>(() => (Array.isArray(bookings) ? bookings : []), [bookings]);
 
   return (
     <div className="space-y-4 pb-12">
@@ -293,7 +332,7 @@ export default function BookingsPage() {
 
         <div className="flex items-center gap-2.5 self-start sm:self-auto">
           <button
-            onClick={() => fetchBookings()}
+            onClick={() => fetchBookings(false, true)}
             disabled={refreshing}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer shadow-xs"
           >
@@ -317,7 +356,7 @@ export default function BookingsPage() {
             <span>{error}</span>
           </div>
           <button
-            onClick={() => fetchBookings()}
+            onClick={() => fetchBookings(false, true)}
             className="px-2.5 py-1 rounded bg-rose-600 hover:bg-rose-500 text-white font-medium text-[11px] transition-colors"
           >
             Retry
@@ -400,14 +439,14 @@ export default function BookingsPage() {
                     <span>Loading operational orders...</span>
                   </td>
                 </tr>
-              ) : bookings.length === 0 ? (
+              ) : bookingList.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-slate-400 dark:text-slate-500">
                     No orders match your filter criteria.
                   </td>
                 </tr>
               ) : (
-                bookings.map((b) => {
+                bookingList.map((b: Booking) => {
                   const cust = b.customer || b.users;
                   const tech = b.technician || b.technician_profiles;
                   return (

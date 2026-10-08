@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { 
   Users, 
@@ -23,6 +23,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { queryClient } from '@/lib/query-client';
 
 interface DashboardStats {
   totalTechs: number;
@@ -45,7 +46,7 @@ interface RecentBooking {
   bookingNumber: string;
   totalAmount: number;
   status: string;
-  snapshotAddress: string;
+  snapshotAddress?: string;
   snapshotCity: string | null;
   createdAt: string;
   customer?: {
@@ -79,112 +80,148 @@ interface AuditItem {
   user?: {
     name: string | null;
     phone: string;
-    role: string;
+    role?: string;
   } | null;
 }
 
+interface OperationsOverviewPayload {
+  stats: DashboardStats;
+  recentBookings: RecentBooking[];
+  technicians: TechnicianItem[];
+  auditStream: AuditItem[];
+  syncedAt?: string;
+}
+
 export default function DashboardPage() {
-  const [adminName, setAdminName] = useState('Administrator');
-  const [adminRole, setAdminRole] = useState('ADMIN');
+  // Read instant synchronous cache if available to prevent any skeleton/blank flashes
+  const initialOverview = queryClient.getQueryData<OperationsOverviewPayload>('dashboard:operations-overview');
+  const initialProfile = queryClient.getQueryData<any>('auth:me');
+
+  const [adminName, setAdminName] = useState<string>(initialProfile?.user?.name || 'Administrator');
+  const [adminRole, setAdminRole] = useState<string>(initialProfile?.user?.role || 'ADMIN');
   
-  const [technicians, setTechnicians] = useState<TechnicianItem[]>([]);
-  const [recentBookings, setRecentBookings] = useState<RecentBooking[]>([]);
-  const [auditStream, setAuditStream] = useState<AuditItem[]>([]);
+  const [technicians, setTechnicians] = useState<TechnicianItem[]>(initialOverview?.technicians || []);
+  const [recentBookings, setRecentBookings] = useState<RecentBooking[]>(initialOverview?.recentBookings || []);
+  const [auditStream, setAuditStream] = useState<AuditItem[]>(initialOverview?.auditStream || []);
   
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [lastSynced, setLastSynced] = useState<string>('');
+  const [loading, setLoading] = useState<boolean>(!initialOverview);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [lastSynced, setLastSynced] = useState<string>(
+    initialOverview?.syncedAt
+      ? new Date(initialOverview.syncedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      : ''
+  );
   const [error, setError] = useState<string | null>(null);
 
-  const [stats, setStats] = useState<DashboardStats>({
-    totalTechs: 0,
-    activeTechs: 0,
-    pendingCount: 0,
-    approvedCount: 0,
-    totalDocs: 0,
-    totalBookings: 0,
-    activeBookings: 0,
-    completedBookings: 0,
-    totalServices: 0,
-    totalCustomers: 0,
-    grossRevenue: 0,
-    totalCommission: 0,
-    adminWalletBalance: 0,
-  });
+  const [stats, setStats] = useState<DashboardStats>(
+    initialOverview?.stats || {
+      totalTechs: 0,
+      activeTechs: 0,
+      pendingCount: 0,
+      approvedCount: 0,
+      totalDocs: 0,
+      totalBookings: 0,
+      activeBookings: 0,
+      completedBookings: 0,
+      totalServices: 0,
+      totalCustomers: 0,
+      grossRevenue: 0,
+      totalCommission: 0,
+      adminWalletBalance: 0,
+    }
+  );
 
-  const loadData = useCallback(async (isSilent = false) => {
-    if (!isSilent) setLoading(true);
-    setRefreshing(true);
-    setError(null);
+  const loadData = useCallback(
+    async (isSilent = false, isForceRefresh = false, callerSignal?: AbortSignal) => {
+      // Keep existing data visible (Cache-First / SWR); do not wipe screen
+      if (!isSilent && !queryClient.getQueryData('dashboard:operations-overview')) {
+        setLoading(true);
+      }
+      setRefreshing(true);
+      setError(null);
 
-    try {
-      // 1. Authenticated Operator Profile
-      const meRes = await fetch('/api/auth/me').catch(() => null);
-      if (meRes && meRes.ok) {
-        const meData = await meRes.json();
+      try {
+        const [overviewData, meData] = await Promise.all([
+          queryClient.fetchQuery<OperationsOverviewPayload>(
+            'dashboard:operations-overview',
+            async (signal) => {
+              const res = await fetch(
+                `/api/dashboard/operations-overview${isForceRefresh ? '?refresh=true' : ''}`,
+                { signal }
+              );
+              if (!res.ok) throw new Error('Failed to load operational feeds');
+              return res.json();
+            },
+            {
+              staleTime: 20000, // 20s data freshness
+              forceRefresh: isForceRefresh,
+              signal: callerSignal,
+            }
+          ),
+          queryClient.fetchQuery<any>(
+            'auth:me',
+            async (signal) => {
+              const res = await fetch('/api/auth/me', { signal });
+              if (!res.ok) throw new Error('Failed to load profile');
+              return res.json();
+            },
+            {
+              staleTime: 300000, // 5 min session validity
+              forceRefresh: isForceRefresh,
+              signal: callerSignal,
+            }
+          ),
+        ]);
+
         if (meData?.user?.name) setAdminName(meData.user.name);
         if (meData?.user?.role) setAdminRole(meData.user.role);
-      }
 
-      // 2. Authoritative Platform Stats
-      const statsRes = await fetch('/api/dashboard/stats').catch(() => null);
-      if (statsRes && statsRes.ok) {
-        const s = await statsRes.json();
-        setStats({
-          totalTechs: s.techniciansCount ?? 0,
-          activeTechs: s.activeTechniciansCount ?? 0,
-          pendingCount: s.pendingVerificationsCount ?? 0,
-          approvedCount: (s.techniciansCount ?? 0) - (s.pendingVerificationsCount ?? 0),
-          totalDocs: s.totalDocumentsCount ?? 0,
-          totalBookings: s.totalBookingsCount ?? 0,
-          activeBookings: s.activeBookingsCount ?? 0,
-          completedBookings: s.completedBookingsCount ?? 0,
-          totalServices: s.totalServicesCount ?? 0,
-          totalCustomers: s.totalUsersCount ?? 0,
-          grossRevenue: s.totalRevenue ?? 0,
-          totalCommission: s.totalCommission ?? 0,
-          adminWalletBalance: s.adminWalletBalance ?? 0,
-        });
-      }
+        if (overviewData) {
+          if (overviewData.stats) setStats(overviewData.stats);
+          if (Array.isArray(overviewData.recentBookings)) setRecentBookings(overviewData.recentBookings);
+          if (Array.isArray(overviewData.technicians)) setTechnicians(overviewData.technicians);
+          if (Array.isArray(overviewData.auditStream)) setAuditStream(overviewData.auditStream);
+        }
 
-      // 3. Live Recent Bookings
-      const bookRes = await fetch('/api/bookings?limit=8').catch(() => null);
-      if (bookRes && bookRes.ok) {
-        const bData = await bookRes.json();
-        const items = Array.isArray(bData) ? bData : bData?.items || [];
-        setRecentBookings(items.slice(0, 7));
+        setLastSynced(
+          new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        );
+      } catch (err: any) {
+        if (err?.name !== 'AbortError') {
+          console.error('Operations fetch error:', err);
+          setError('Operational feeds degraded. Connecting to server...');
+        }
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-
-      // 4. Technician Workforce
-      const techRes = await fetch('/api/technicians?limit=8').catch(() => null);
-      if (techRes && techRes.ok) {
-        const tData = await techRes.json();
-        const items = Array.isArray(tData) ? tData : tData?.items || [];
-        setTechnicians(items.slice(0, 7));
-      }
-
-      // 5. Audit Log Stream
-      const auditRes = await fetch('/api/audit-logs?limit=6').catch(() => null);
-      if (auditRes && auditRes.ok) {
-        const aData = await auditRes.json();
-        const items = Array.isArray(aData?.items) ? aData.items : [];
-        setAuditStream(items.slice(0, 5));
-      }
-
-      setLastSynced(new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-    } catch (err: any) {
-      console.error('Operations fetch error:', err);
-      setError('Operational feeds degraded. Connecting to server...');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+    },
+    []
+  );
 
   useEffect(() => {
-    loadData();
-    const interval = setInterval(() => loadData(true), 30000);
-    return () => clearInterval(interval);
+    const abortController = new AbortController();
+    loadData(false, false, abortController.signal);
+
+    // Idle-aware background polling (30 seconds)
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        loadData(true, false);
+      }
+    }, 30000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadData(true, false);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      abortController.abort();
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [loadData]);
 
   return (
@@ -212,7 +249,7 @@ export default function DashboardPage() {
             </span>
           )}
           <button
-            onClick={() => loadData()}
+            onClick={() => loadData(false, true)}
             disabled={refreshing}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer disabled:opacity-50 shadow-2xs"
           >

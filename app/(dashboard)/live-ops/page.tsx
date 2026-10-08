@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import { 
   Activity, 
@@ -23,6 +23,7 @@ import {
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { CaseDrawer } from '@/components/ui/CaseDrawer';
 import { DestructiveModal } from '@/components/ui/DestructiveModal';
+import { queryClient } from '@/lib/query-client';
 
 interface BookingItem {
   id: string;
@@ -54,8 +55,10 @@ interface BookingItem {
 }
 
 export default function LiveOperationsPage() {
-  const [bookings, setBookings] = useState<BookingItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [bookings, setBookings] = useState<BookingItem[]>(() => {
+    return queryClient.getQueryData<BookingItem[]>('bookings:live-ops') || [];
+  });
+  const [loading, setLoading] = useState(() => !queryClient.getQueryData('bookings:live-ops'));
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -67,28 +70,37 @@ export default function LiveOperationsPage() {
   const selectedBookingRef = useRef<BookingItem | null>(null);
   selectedBookingRef.current = selectedBooking;
 
-  const fetchLiveOps = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
+  const fetchLiveOps = useCallback(async (silent = false, forceRefresh = false, signal?: AbortSignal) => {
+    const hasCached = !!queryClient.getQueryData('bookings:live-ops');
+    if (!silent && !hasCached) setLoading(true);
     setRefreshing(true);
     setError(null);
     try {
-      // Fetch active bookings
-      const res = await fetch('/api/bookings?tab=active&limit=50');
-      if (res.ok) {
-        const data = await res.json();
-        const items = Array.isArray(data) ? data : data?.items || [];
-        setBookings(items);
-        const currentSelected = selectedBookingRef.current;
-        if (currentSelected) {
-          const updated = items.find((b: BookingItem) => b.id === currentSelected.id);
-          if (updated && (updated.status !== currentSelected.status || updated.paymentStatus !== currentSelected.paymentStatus)) {
-            setSelectedBooking(updated);
-          }
+      const items = await queryClient.fetchQuery<BookingItem[]>(
+        'bookings:live-ops',
+        async (sig) => {
+          const url = `/api/bookings/live-ops${forceRefresh ? '?force=true' : ''}`;
+          const res = await fetch(url, { signal: sig });
+          if (!res.ok) throw new Error(`Failed to load live dispatch queue (${res.status})`);
+          const data = await res.json();
+          return Array.isArray(data) ? data : data?.items || [];
+        },
+        {
+          staleTime: 10000,
+          forceRefresh,
+          signal,
         }
-      } else {
-        throw new Error(`Failed to load live dispatch queue (${res.status})`);
+      );
+      setBookings(items);
+      const currentSelected = selectedBookingRef.current;
+      if (currentSelected) {
+        const updated = items.find((b: BookingItem) => b.id === currentSelected.id);
+        if (updated && (updated.status !== currentSelected.status || updated.paymentStatus !== currentSelected.paymentStatus)) {
+          setSelectedBooking(updated);
+        }
       }
     } catch (e: any) {
+      if (e?.name === 'AbortError') return;
       console.error('Failed to fetch live operations', e);
       setError(e?.message || 'Failed to connect to operations dispatch stream.');
     } finally {
@@ -98,53 +110,92 @@ export default function LiveOperationsPage() {
   }, []);
 
   useEffect(() => {
-    fetchLiveOps();
-    const timer = setInterval(() => fetchLiveOps(true), 20000);
-    return () => clearInterval(timer);
+    const controller = new AbortController();
+    fetchLiveOps(false, false, controller.signal);
+
+    let intervalId: NodeJS.Timeout | null = null;
+    const startPolling = () => {
+      if (!intervalId) {
+        intervalId = setInterval(() => {
+          if (document.visibilityState === 'visible') {
+            fetchLiveOps(true, false);
+          }
+        }, 15000);
+      }
+    };
+    const stopPolling = () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchLiveOps(true, false);
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+
+    startPolling();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      controller.abort();
+      stopPolling();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [fetchLiveOps]);
 
   // City list
-  const cities = Array.from(
+  const cities = useMemo(() => Array.from(
     new Set(bookings.map((b) => b.snapshotCity).filter(Boolean))
-  ) as string[];
+  ) as string[], [bookings]);
 
   // Filtered by search & city
-  const filtered = bookings.filter((b) => {
-    const matchesSearch =
-      b.bookingNumber.toLowerCase().includes(search.toLowerCase()) ||
-      b.customer?.name?.toLowerCase().includes(search.toLowerCase()) ||
-      b.customer?.phone?.includes(search) ||
-      b.technician?.fullName?.toLowerCase().includes(search.toLowerCase());
-    const matchesCity = selectedCity === 'ALL' || b.snapshotCity === selectedCity;
-    return matchesSearch && matchesCity;
-  });
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return bookings.filter((b) => {
+      const matchesSearch = !q ||
+        b.bookingNumber.toLowerCase().includes(q) ||
+        (b.customer?.name && b.customer.name.toLowerCase().includes(q)) ||
+        (b.customer?.phone && b.customer.phone.includes(q)) ||
+        (b.technician?.fullName && b.technician.fullName.toLowerCase().includes(q));
+      const matchesCity = selectedCity === 'ALL' || b.snapshotCity === selectedCity;
+      return matchesSearch && matchesCity;
+    });
+  }, [bookings, search, selectedCity]);
 
   // Calculate live pipeline buckets
-  const unassigned = filtered.filter((b) =>
+  const unassigned = useMemo(() => filtered.filter((b) =>
     ['PENDING_MATCHING', 'TECHNICIAN_SEARCHING', 'PARTIALLY_ASSIGNED'].includes(b.status)
-  );
+  ), [filtered]);
 
-  const dispatched = filtered.filter((b) =>
+  const dispatched = useMemo(() => filtered.filter((b) =>
     ['TECHNICIAN_ASSIGNED', 'TECHNICIAN_ACCEPTED'].includes(b.status)
-  );
+  ), [filtered]);
 
-  const enRoute = filtered.filter((b) =>
+  const enRoute = useMemo(() => filtered.filter((b) =>
     ['TECHNICIAN_ON_THE_WAY'].includes(b.status)
-  );
+  ), [filtered]);
 
-  const inService = filtered.filter((b) =>
+  const inService = useMemo(() => filtered.filter((b) =>
     ['TECHNICIAN_ARRIVED', 'SERVICE_STARTED'].includes(b.status)
-  );
+  ), [filtered]);
 
   // At-risk detection (jobs created > 10 mins ago still unassigned, or pending payment)
-  const now = new Date().getTime();
-  const atRiskJobs = filtered.filter((b) => {
-    const ageMins = (now - new Date(b.createdAt).getTime()) / (1000 * 60);
-    return (
-      (unassigned.some((u) => u.id === b.id) && ageMins > 10) ||
-      b.status === 'PAYMENT_PENDING'
-    );
-  });
+  const atRiskJobs = useMemo(() => {
+    const now = Date.now();
+    return filtered.filter((b) => {
+      const ageMins = (now - new Date(b.createdAt).getTime()) / (1000 * 60);
+      return (
+        (unassigned.some((u) => u.id === b.id) && ageMins > 10) ||
+        b.status === 'PAYMENT_PENDING'
+      );
+    });
+  }, [filtered, unassigned]);
 
   const handleCancelBooking = async (reason: string) => {
     if (!cancelBookingTarget) return;
@@ -157,7 +208,9 @@ export default function LiveOperationsPage() {
       });
       if (res.ok) {
         setCancelBookingTarget(null);
-        fetchLiveOps();
+        queryClient.invalidateQuery('bookings:live-ops');
+        queryClient.invalidateQuery('dashboard:operations-overview');
+        fetchLiveOps(true, true);
       }
     } catch (e) {
       console.error('Cancellation error', e);
@@ -187,7 +240,7 @@ export default function LiveOperationsPage() {
 
         <div className="flex items-center gap-2.5 self-start sm:self-auto">
           <button
-            onClick={() => fetchLiveOps()}
+            onClick={() => fetchLiveOps(false, true)}
             disabled={refreshing}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer shadow-xs"
           >
@@ -211,7 +264,7 @@ export default function LiveOperationsPage() {
             <span>{error}</span>
           </div>
           <button
-            onClick={() => fetchLiveOps()}
+            onClick={() => fetchLiveOps(false, true)}
             className="px-2.5 py-1 rounded bg-rose-600 hover:bg-rose-500 text-white font-medium text-[11px] transition-colors"
           >
             Retry Connection
