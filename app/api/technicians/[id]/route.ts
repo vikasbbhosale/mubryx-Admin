@@ -23,18 +23,40 @@ export async function GET(
       id: t.id,
       fullName: t.fullName || t.user?.name || 'Technician',
       phone: t.user?.phone || t.contact || '',
+      contact: t.user?.phone || t.contact || '',
       email: t.user?.email || '',
+      user: t.user ? {
+        id: t.user.id,
+        phone: t.user.phone || t.contact || '',
+        name: t.user.name || t.fullName,
+        email: t.user.email || null,
+        isActive: t.user.isActive ?? true,
+        role: t.user.role || 'TECHNICIAN',
+      } : {
+        id: t.userId || t.id,
+        phone: t.contact || '',
+        name: t.fullName,
+        email: null,
+        isActive: true,
+        role: 'TECHNICIAN',
+      },
       dateOfBirth: t.dateOfBirth || '',
       gender: t.gender || 'MALE',
       profilePhoto:
-        t.profilePhoto ||
-        'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=200&h=200&auto=format&fit=crop',
+        (t.profilePhoto && !t.profilePhoto.startsWith('mock://') && (t.profilePhoto.startsWith('http://') || t.profilePhoto.startsWith('https://')))
+          ? t.profilePhoto
+          : null,
       currentCity: t.currentCity || '',
+      currentState: t.currentState || '',
       pinCode: t.pinCode || '',
       bio: t.bio || '',
       experienceYears: t.experienceYears || 0,
       onboardingStatus: t.onboardingStatus,
       reviewNotes: t.currentState || '',
+      rating: t.rating || 5.0,
+      totalRatings: t.totalRatings || 0,
+      isOnline: t.isOnline || false,
+      lastLocationUpdatedAt: t.lastLocationUpdatedAt || null,
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
       submittedAt: t.submittedAt,
@@ -46,9 +68,10 @@ export async function GET(
         objectKey: d.objectKey,
         fileSize: d.fileSize,
         mimeType: d.mimeType,
-        status: 'PENDING',
+        status: t.onboardingStatus === 'APPROVED' ? 'VERIFIED' : 'PENDING',
         rejectionReason: '',
-        previewUrl: `https://mubryx-technician-private.s3.ap-southeast-1.wasabisys.com/${d.objectKey}`,
+        signedUrl: d.signedUrl || null,
+        previewUrl: d.signedUrl || `/api/documents/${d.id}/view`,
         createdAt: d.createdAt,
         updatedAt: d.updatedAt,
       })),
@@ -56,6 +79,9 @@ export async function GET(
       skills: (t.skills || []).map((c: any) => ({
         id: c.id,
         name: c.name,
+        slug: c.slug,
+        icon: c.icon,
+        image: c.image,
         description: c.description || '',
       })),
 
@@ -63,6 +89,7 @@ export async function GET(
         id: e.id,
         role: e.role,
         companyName: e.companyName,
+        totalExperience: e.totalExperience,
         startDate: e.startDate,
         endDate: e.endDate,
         responsibilities: e.responsibilities || '',
@@ -70,6 +97,15 @@ export async function GET(
 
       bankDetails: t.bankDetails || null,
       wallet: t.wallet || null,
+      metrics: t.metrics || {
+        totalJobs: (t.bookings || []).length,
+        completedJobs: (t.bookings || []).filter((b: any) => ['COMPLETED', 'SERVICE_COMPLETED'].includes(b.status)).length,
+        activeJobs: (t.bookings || []).filter((b: any) => !['COMPLETED', 'SERVICE_COMPLETED', 'CANCELLED'].includes(b.status)).length,
+        totalDispatches: (t.dispatches || []).length,
+        walletBalance: t.wallet?.availableBalance || 0,
+      },
+      bookings: t.bookings || [],
+      dispatches: t.dispatches || [],
     };
 
     return NextResponse.json(mapped);

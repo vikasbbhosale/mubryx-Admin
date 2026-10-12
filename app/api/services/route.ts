@@ -6,6 +6,8 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const categoryId = searchParams.get('categoryId');
+    const subCategoryId = searchParams.get('subCategoryId');
+    const isActive = searchParams.get('isActive');
     const search = searchParams.get('search');
     const page = searchParams.get('page') || '1';
     const limit = searchParams.get('limit') || '100';
@@ -13,6 +15,12 @@ export async function GET(request: NextRequest) {
     const params = new URLSearchParams();
     if (categoryId && categoryId !== 'ALL') {
       params.set('categoryId', categoryId);
+    }
+    if (subCategoryId && subCategoryId !== 'ALL') {
+      params.set('subCategoryId', subCategoryId);
+    }
+    if (isActive !== null && isActive !== undefined) {
+      params.set('isActive', isActive);
     }
     if (search) {
       params.set('search', search);

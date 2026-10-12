@@ -27,12 +27,29 @@ export async function GET(request: NextRequest) {
       id: t.id,
       fullName: t.fullName || t.user?.name || 'Technician',
       phone: t.user?.phone || t.contact || '',
+      contact: t.user?.phone || t.contact || '',
       email: t.user?.email || '',
+      user: t.user ? {
+        id: t.user.id,
+        phone: t.user.phone || t.contact || '',
+        name: t.user.name || t.fullName,
+        email: t.user.email || null,
+        isActive: t.user.isActive ?? true,
+        role: t.user.role || 'TECHNICIAN',
+      } : {
+        id: t.userId || t.id,
+        phone: t.contact || '',
+        name: t.fullName,
+        email: null,
+        isActive: true,
+        role: 'TECHNICIAN',
+      },
       dateOfBirth: t.dateOfBirth || '',
       gender: t.gender || 'MALE',
       profilePhoto:
-        t.profilePhoto ||
-        'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=200&h=200&auto=format&fit=crop',
+        (t.profilePhoto && !t.profilePhoto.startsWith('mock://') && (t.profilePhoto.startsWith('http://') || t.profilePhoto.startsWith('https://')))
+          ? t.profilePhoto
+          : null,
       currentCity: t.currentCity || '',
       pinCode: t.pinCode || '',
       bio: t.bio || '',
@@ -52,7 +69,7 @@ export async function GET(request: NextRequest) {
         mimeType: d.mimeType,
         status: 'PENDING',
         rejectionReason: '',
-        previewUrl: `https://mubryx-technician-private.s3.ap-southeast-1.wasabisys.com/${d.objectKey}`,
+        previewUrl: d.signedUrl || `/api/documents/${d.id}/view`,
         createdAt: d.createdAt,
         updatedAt: d.updatedAt,
       })),

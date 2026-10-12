@@ -184,17 +184,18 @@ export default function DocumentsPage() {
     if (!activeDoc) return;
     try {
       setProcessing(true);
-      const res = await fetch(`/api/technicians/${activeDoc.technician.id}/status`, {
+      const res = await fetch(`/api/documents/${activeDoc.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          status: newStatus === 'VERIFIED' ? 'APPROVED' : 'REJECTED',
-          reason: newStatus === 'REJECTED' ? (rejectionReason || 'Document unreadable or invalid') : undefined 
+          status: newStatus,
+          rejectionReason: newStatus === 'REJECTED' ? (rejectionReason || 'Document unreadable or invalid') : undefined,
+          reason: newStatus === 'REJECTED' ? (rejectionReason || 'Document unreadable or invalid') : undefined,
         })
       });
 
       if (res.ok) {
-        // Optimistic update
+        // Optimistically update ONLY this specific document in state
         setDocuments(prev => prev.map(d => d.id === activeDoc.id ? { 
           ...d, 
           status: newStatus, 
@@ -202,10 +203,13 @@ export default function DocumentsPage() {
         } : d));
         
         queryClient.invalidateQueriesByPrefix('documents:list');
-        queryClient.invalidateQueriesByPrefix('technicians:list');
+        queryClient.invalidateQueriesByPrefix('technicians:');
         queryClient.invalidateQuery('dashboard:operations-overview');
         fetchDocuments(true, true);
         setActiveDoc(null);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        alert(errData?.message || errData?.error || 'Failed to update document status');
       }
     } catch (error) {
       console.error('Failed to update document status', error);
@@ -382,10 +386,9 @@ export default function DocumentsPage() {
               className="bg-transparent text-xs text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer"
             >
               <option value="ALL">All Statuses</option>
-              <option value="APPROVED">Verified Only</option>
-              <option value="SUBMITTED">Pending Review</option>
-              <option value="UNDER_REVIEW">Under Review</option>
-              <option value="SUSPENDED">Suspended</option>
+              <option value="PENDING">Pending Review</option>
+              <option value="VERIFIED">Verified Only</option>
+              <option value="REJECTED">Rejected Only</option>
             </select>
           </div>
         </div>
