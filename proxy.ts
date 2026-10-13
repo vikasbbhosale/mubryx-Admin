@@ -15,8 +15,15 @@ const JWT_SECRET = new TextEncoder().encode(jwtAccessSecret);
 async function verifyAdminToken(token: string): Promise<boolean> {
   try {
     const { payload } = await jwtVerify(token, JWT_SECRET);
-    const role = payload?.role;
-    return role === 'ADMIN' || role === 'SUPER_ADMIN';
+    const role = (payload as any)?.role;
+    const roles: string[] =
+      Array.isArray((payload as any)?.roles) && (payload as any)?.roles.length > 0
+        ? (payload as any)?.roles
+        : role
+          ? [role]
+          : [];
+
+    return roles.includes('ADMIN') || roles.includes('SUPER_ADMIN');
   } catch (err) {
     console.error('JWT Verification Error:', err);
     return false;
@@ -30,6 +37,7 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api/auth/login') ||
     pathname.startsWith('/api/auth/request-otp') ||
+    pathname.startsWith('/api/d2c/documents') ||
     pathname.includes('.')
   ) {
     return NextResponse.next();

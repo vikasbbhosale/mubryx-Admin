@@ -18,7 +18,13 @@ import {
   LogOut, 
   ChevronLeft, 
   ChevronRight,
-  Shield
+  Shield,
+  ShieldCheck,
+  Wrench,
+  Clock,
+  AlertTriangle,
+  PlusCircle,
+  History,
 } from 'lucide-react';
 
 interface NavItem {
@@ -69,6 +75,18 @@ export default function AdminSidebar() {
 
   const navSections: NavSection[] = [
     {
+      title: 'D2C Operations',
+      items: [
+        { name: 'D2C Jobs', href: '/d2c-jobs', icon: Wrench, badge: 'D2C', badgeColor: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30' },
+        { name: 'Create Job', href: '/d2c-jobs?tab=create', icon: PlusCircle },
+        { name: 'Assignment Board', href: '/d2c-jobs?tab=assignments', icon: UserCheck },
+        { name: 'Approval Queue', href: '/d2c-jobs?tab=approvals', icon: Clock },
+        { name: 'Cancellation Tracker', href: '/d2c-jobs?tab=cancellations', icon: AlertTriangle },
+        { name: 'Completed & Docs', href: '/d2c-jobs?tab=documents', icon: FileCheck },
+        { name: 'D2C Audit Trail', href: '/d2c-jobs?tab=audit', icon: History },
+      ],
+    },
+    {
       title: 'Operations',
       items: [
         { name: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -79,6 +97,7 @@ export default function AdminSidebar() {
     {
       title: 'Workforce & KYC',
       items: [
+        { name: 'D2C Verifications', href: '/d2c-verifications', icon: ShieldCheck, badge: 'D2C', badgeColor: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30' },
         { name: 'Technicians', href: '/technicians', icon: Users },
         { name: 'KYC Verifications', href: '/verifications', icon: UserCheck },
         { name: 'Document Audits', href: '/documents', icon: FileCheck },

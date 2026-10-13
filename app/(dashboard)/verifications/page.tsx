@@ -202,6 +202,13 @@ export default function VerificationsPage() {
         </div>
 
         <div className="flex items-center gap-2.5 self-start sm:self-auto">
+          <Link
+            href="/d2c-verifications"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-colors"
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>D2C Technician Approvals</span>
+          </Link>
           <button
             onClick={() => fetchQueue()}
             disabled={refreshing}
