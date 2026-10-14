@@ -119,7 +119,7 @@ export default function D2cAssignModal({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -127,11 +127,11 @@ export default function D2cAssignModal({
 
         {/* Current vs Replacement Summary if Reassign */}
         {isReassign && job.assignedTechnician && (
-          <div className="p-3 bg-amber-500/10 border-b border-amber-500/20 text-xs text-amber-300 flex items-center justify-between">
+          <div className="p-3 bg-amber-50 dark:bg-amber-500/10 border-b border-amber-200 dark:border-amber-500/20 text-xs text-amber-800 dark:text-amber-300 flex items-center justify-between">
             <span>
               <strong>Current Technician:</strong> {job.assignedTechnician.fullName} ({job.assignedTechnician.operatingCity})
             </span>
-            <span className="text-[10px] text-amber-400 font-semibold uppercase">Will be revoked immediately</span>
+            <span className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold uppercase">Will be revoked immediately</span>
           </div>
         )}
 
@@ -144,13 +144,13 @@ export default function D2cAssignModal({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by technician name, PIN code, locality, or phone..."
-              className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs"
+              className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-xs"
             />
           </div>
         </div>
 
         {error && (
-          <div className="mx-4 mt-3 p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2">
+          <div className="mx-4 mt-3 p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{error}</span>
           </div>
@@ -174,14 +174,14 @@ export default function D2cAssignModal({
                   onClick={() => !isCurrent && setSelectedTechId(t.id)}
                   className={`p-3 rounded-xl border transition cursor-pointer flex items-center justify-between ${
                     isCurrent
-                      ? 'opacity-40 bg-slate-800/20 border-slate-800 cursor-not-allowed'
+                      ? 'opacity-50 bg-slate-100 dark:bg-slate-800/20 border-slate-200 dark:border-slate-800 cursor-not-allowed'
                       : isSelected
-                      ? 'bg-blue-500/10 border-blue-500 ring-1 ring-blue-500/30'
-                      : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-800 hover:border-slate-700'
+                      ? 'bg-blue-50 dark:bg-blue-500/10 border-blue-500 ring-1 ring-blue-500/30'
+                      : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-xs shrink-0">
+                    <div className="w-9 h-9 rounded-full bg-blue-500/20 text-blue-600 dark:text-blue-400 font-bold flex items-center justify-center text-xs shrink-0">
                       {t.fullName?.[0] || 'T'}
                     </div>
                     <div>
@@ -189,28 +189,28 @@ export default function D2cAssignModal({
                         <span className="font-bold text-slate-900 dark:text-white text-xs">{t.fullName}</span>
                         <span
                           className={`w-2 h-2 rounded-full ${
-                            t.isOnline ? 'bg-emerald-400' : 'bg-slate-500'
+                            t.isOnline ? 'bg-emerald-400' : 'bg-slate-400'
                           }`}
                           title={t.isOnline ? 'Online' : 'Offline'}
                         />
                         {t.matchScore >= 70 && (
-                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
                             <Sparkles className="w-2.5 h-2.5" /> High Match ({t.matchScore}%)
                           </span>
                         )}
                         {isCurrent && (
-                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-slate-700 text-slate-300">
+                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
                             Currently Assigned
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-3 text-slate-400 text-[11px] mt-0.5">
+                      <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400 text-[11px] mt-0.5">
                         <span className="flex items-center gap-1">
-                          <MapPin className="w-3 h-3 text-slate-500" />
+                          <MapPin className="w-3 h-3 text-slate-400" />
                           {t.operatingCity} ({t.servicePincode})
                         </span>
                         <span className="flex items-center gap-1">
-                          <Briefcase className="w-3 h-3 text-slate-500" />
+                          <Briefcase className="w-3 h-3 text-slate-400" />
                           Workload: {t.activeJobsCount} active jobs
                         </span>
                         <span>{t.phone}</span>
@@ -221,7 +221,7 @@ export default function D2cAssignModal({
                   <div className="flex items-center gap-2">
                     <div
                       className={`w-5 h-5 rounded-full border flex items-center justify-center ${
-                        isSelected ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-600'
+                        isSelected ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-300 dark:border-slate-600'
                       }`}
                     >
                       {isSelected && <Check className="w-3 h-3" />}
@@ -240,7 +240,7 @@ export default function D2cAssignModal({
         {/* Mandatory Reassignment Reason (if reassigning) */}
         {isReassign && (
           <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 space-y-1.5">
-            <label className="text-[11px] font-bold text-slate-300 block">
+            <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block">
               Mandatory Reassignment Reason <span className="text-rose-500">*</span>
             </label>
             <input
@@ -248,7 +248,7 @@ export default function D2cAssignModal({
               value={reassignReason}
               onChange={(e) => setReassignReason(e.target.value)}
               placeholder="e.g. Technician delayed on previous job, Customer requested immediate visit..."
-              className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs"
+              className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-xs"
               required
             />
           </div>

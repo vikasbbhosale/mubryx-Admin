@@ -62,38 +62,38 @@ export default function D2cConfirmCrmCancellationModal({
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+            className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         <div className="my-4 space-y-2">
-          <p className="text-slate-600 dark:text-slate-300 text-xs leading-relaxed">
+          <p className="text-slate-700 dark:text-slate-300 text-xs leading-relaxed">
             Are you sure you want to confirm CRM cancellation for ticket{' '}
             <strong className="text-slate-900 dark:text-white font-mono">{job.inquiryCode}</strong>?
           </p>
           <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 space-y-1">
             <div className="flex justify-between text-[11px]">
-              <span className="text-slate-400">Customer:</span>
+              <span className="text-slate-500 dark:text-slate-400">Customer:</span>
               <span className="font-semibold text-slate-700 dark:text-slate-200">{job.customerName} ({job.customerPhone})</span>
             </div>
             <div className="flex justify-between text-[11px]">
-              <span className="text-slate-400">Brand / Appliance:</span>
+              <span className="text-slate-500 dark:text-slate-400">Brand / Appliance:</span>
               <span className="font-semibold text-slate-700 dark:text-slate-200">{job.brandName} • {job.applianceCategory || 'Appliance'}</span>
             </div>
             <div className="flex justify-between text-[11px]">
-              <span className="text-slate-400">Technician:</span>
+              <span className="text-slate-500 dark:text-slate-400">Technician:</span>
               <span className="font-semibold text-slate-700 dark:text-slate-200">{job.assignedTechnician?.fullName || 'Unassigned'}</span>
             </div>
           </div>
-          <p className="text-[11px] text-slate-400">
-            This will mark the job status as <strong className="text-rose-400">Cancelled</strong> and close this ticket.
+          <p className="text-[11px] text-slate-600 dark:text-slate-400">
+            This will mark the job status as <strong className="text-rose-600 dark:text-rose-400 font-semibold">Cancelled</strong> and close this ticket.
           </p>
         </div>
 
         {error && (
-          <div className="mb-4 p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2">
+          <div className="mb-4 p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{error}</span>
           </div>
@@ -104,7 +104,7 @@ export default function D2cConfirmCrmCancellationModal({
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="px-3.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold cursor-pointer transition disabled:opacity-50"
+            className="px-3.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold cursor-pointer transition disabled:opacity-50"
           >
             Cancel
           </button>

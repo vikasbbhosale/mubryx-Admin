@@ -478,3 +478,69 @@ export const D2cApi = {
     document.body.removeChild(link);
   },
 };
+
+/**
+ * Standardized Document Filename Formatter:
+ * - Bill / Invoice: <customername>_bill.<ext>
+ * - Model Plate:    <customername>_model.<ext>
+ * - Happy Code:     <customername>_happycode.<ext>
+ * - Demo:           <customername>_demo.<ext>
+ */
+export function formatStandardDocFilename(
+  customerName: string,
+  typeOrDoc: string,
+  mimeTypeOrExt?: string,
+): string {
+  const safeCustomer = (customerName || 'Customer')
+    .trim()
+    .replace(/\s+/g, '_')
+    .replace(/[^a-zA-Z0-9_-]/g, '');
+
+  const upper = (typeOrDoc || '').toUpperCase();
+  let suffix = 'document';
+
+  if (
+    upper === 'JOB_SHEET_DOCUMENT' ||
+    upper.includes('BILL') ||
+    upper.includes('INVOICE') ||
+    upper.includes('SHEET')
+  ) {
+    suffix = 'bill';
+  } else if (
+    upper === 'NAMEPLATE_SCAN' ||
+    upper.includes('MODEL') ||
+    upper.includes('PLATE') ||
+    upper.includes('BARCODE')
+  ) {
+    suffix = 'model';
+  } else if (
+    upper === 'PRE_INSPECTION_PHOTO' ||
+    upper.includes('HAPPY') ||
+    upper.includes('CODE') ||
+    upper.includes('INSPECTION') ||
+    upper.includes('PRE')
+  ) {
+    suffix = 'happycode';
+  } else if (
+    upper === 'POST_REPAIR_PHOTO' ||
+    upper.includes('DEMO') ||
+    upper.includes('WORKING') ||
+    upper.includes('REPAIR') ||
+    upper.includes('POST')
+  ) {
+    suffix = 'demo';
+  } else {
+    suffix = typeOrDoc.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+  }
+
+  let ext = 'jpg';
+  if (mimeTypeOrExt) {
+    if (mimeTypeOrExt.includes('pdf')) ext = 'pdf';
+    else if (mimeTypeOrExt.includes('png')) ext = 'png';
+    else if (mimeTypeOrExt.includes('webp')) ext = 'webp';
+    else if (mimeTypeOrExt.includes('jpeg') || mimeTypeOrExt.includes('jpg')) ext = 'jpg';
+    else if (mimeTypeOrExt.includes('.')) ext = mimeTypeOrExt.split('.').pop() || 'jpg';
+  }
+
+  return `${safeCustomer}_${suffix}.${ext}`;
+}

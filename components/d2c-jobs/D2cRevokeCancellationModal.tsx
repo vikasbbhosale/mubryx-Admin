@@ -46,9 +46,18 @@ export default function D2cRevokeCancellationModal({
 
   useEffect(() => {
     if (job && isOpen) {
-      // Default to job's date or tomorrow
+      // Default to job's date (formatted as YYYY-MM-DD) or tomorrow
       if (job.appointmentDate) {
-        setAppointmentDate(job.appointmentDate);
+        try {
+          const d = new Date(job.appointmentDate);
+          if (!isNaN(d.getTime())) {
+            setAppointmentDate(d.toISOString().split('T')[0]);
+          } else {
+            setAppointmentDate(String(job.appointmentDate).slice(0, 10));
+          }
+        } catch {
+          setAppointmentDate('');
+        }
       } else {
         const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
@@ -118,23 +127,23 @@ export default function D2cRevokeCancellationModal({
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+            className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="my-3 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-300 text-xs space-y-1">
-          <span className="font-bold text-blue-400 flex items-center gap-1.5">
+        <div className="my-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 text-blue-900 dark:text-blue-300 text-xs space-y-1">
+          <span className="font-bold text-blue-700 dark:text-blue-400 flex items-center gap-1.5">
             <CalendarClock className="w-4 h-4" /> Customer Reschedule Workflow
           </span>
-          <p className="text-[11px] leading-relaxed text-slate-300">
+          <p className="text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
             This action revokes the cancellation status and restores this ticket to active operations. You can set the new appointment date/time and reassign the job directly to a field technician.
           </p>
         </div>
 
         {error && (
-          <div className="mb-3 p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2">
+          <div className="mb-3 p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{error}</span>
           </div>
@@ -143,8 +152,8 @@ export default function D2cRevokeCancellationModal({
         <form onSubmit={handleSubmit} className="space-y-3.5">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-[11px] font-semibold text-slate-400 flex items-center gap-1 mb-1">
-                <Calendar className="w-3.5 h-3.5 text-blue-400" /> New Appointment Date
+              <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 flex items-center gap-1 mb-1">
+                <Calendar className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" /> New Appointment Date
               </label>
               <input
                 type="date"
@@ -155,8 +164,8 @@ export default function D2cRevokeCancellationModal({
               />
             </div>
             <div>
-              <label className="text-[11px] font-semibold text-slate-400 flex items-center gap-1 mb-1">
-                <Clock className="w-3.5 h-3.5 text-blue-400" /> Time Slot
+              <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 flex items-center gap-1 mb-1">
+                <Clock className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" /> Time Slot
               </label>
               <select
                 value={timeSlot}
@@ -173,12 +182,12 @@ export default function D2cRevokeCancellationModal({
           </div>
 
           <div>
-            <label className="text-[11px] font-semibold text-slate-400 flex items-center justify-between mb-1">
+            <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 flex items-center justify-between mb-1">
               <span className="flex items-center gap-1">
-                <UserCheck className="w-3.5 h-3.5 text-blue-400" /> Assign Technician
+                <UserCheck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" /> Assign Technician
               </span>
               {loadingTechs && (
-                <span className="text-[10px] text-blue-400 flex items-center gap-1">
+                <span className="text-[10px] text-blue-600 dark:text-blue-400 flex items-center gap-1">
                   <Loader2 className="w-3 h-3 animate-spin" /> Loading available techs...
                 </span>
               )}
@@ -196,13 +205,13 @@ export default function D2cRevokeCancellationModal({
                 </option>
               ))}
             </select>
-            <p className="text-[10px] text-slate-400 mt-1">
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
               Select a technician to assign immediately, or leave unassigned to put in the Unassigned Pool.
             </p>
           </div>
 
           <div>
-            <label className="text-[11px] font-semibold text-slate-400 block mb-1">
+            <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
               Reschedule Note / Reason (Optional)
             </label>
             <input
@@ -210,7 +219,7 @@ export default function D2cRevokeCancellationModal({
               value={remark}
               onChange={(e) => setRemark(e.target.value)}
               placeholder="e.g. Customer requested rescheduling after initial cancellation inquiry"
-              className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs"
+              className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-xs"
             />
           </div>
 
@@ -219,7 +228,7 @@ export default function D2cRevokeCancellationModal({
               type="button"
               onClick={onClose}
               disabled={submitting}
-              className="px-3.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold cursor-pointer transition disabled:opacity-50"
+              className="px-3.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold cursor-pointer transition disabled:opacity-50"
             >
               Cancel
             </button>

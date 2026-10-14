@@ -96,15 +96,15 @@ export default function D2cCancellationActionModal({
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+            className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {isConfirmCrm ? (
-          <div className="my-3 p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs space-y-1.5">
-            <span className="font-bold text-rose-400 flex items-center gap-1.5">
+          <div className="my-3 p-3 rounded-lg bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 text-rose-800 dark:text-rose-300 text-xs space-y-1.5">
+            <span className="font-bold text-rose-700 dark:text-rose-400 flex items-center gap-1.5">
               <ShieldAlert className="w-4 h-4" /> Authoritative CRM Verification
             </span>
             <p className="text-[11px] leading-relaxed">
@@ -112,13 +112,13 @@ export default function D2cCancellationActionModal({
             </p>
           </div>
         ) : (
-          <div className="my-3 p-3 rounded-lg bg-slate-800/40 border border-slate-700/50 text-slate-300 text-xs">
+          <div className="my-3 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/50 text-slate-700 dark:text-slate-300 text-xs">
             Record the cancellation authorization code provided by the customer or brand OEM portal before processing CRM cancellation.
           </div>
         )}
 
         {error && (
-          <div className="mb-3 p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2">
+          <div className="mb-3 p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{error}</span>
           </div>
@@ -128,7 +128,7 @@ export default function D2cCancellationActionModal({
           {!isConfirmCrm ? (
             <>
               <div>
-                <label className="text-[11px] font-semibold text-slate-400 block mb-1">
+                <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
                   Customer Cancellation Code
                 </label>
                 <input
@@ -136,12 +136,12 @@ export default function D2cCancellationActionModal({
                   value={cancellationCode}
                   onChange={(e) => setCancellationCode(e.target.value)}
                   placeholder="e.g. CANC-LG-9821"
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 font-mono"
                   required
                 />
               </div>
               <div>
-                <label className="text-[11px] font-semibold text-slate-400 block mb-1">
+                <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
                   Verification Remark (Optional)
                 </label>
                 <input
@@ -149,14 +149,14 @@ export default function D2cCancellationActionModal({
                   value={confirmationRemark}
                   onChange={(e) => setConfirmationRemark(e.target.value)}
                   placeholder="e.g. Code verified with customer over call"
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500"
                 />
               </div>
             </>
           ) : (
             <>
               <div>
-                <label className="text-[11px] font-semibold text-slate-400 block mb-1">
+                <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
                   CRM Confirmation Remark <span className="text-rose-500">*</span>
                 </label>
                 <textarea
@@ -164,12 +164,12 @@ export default function D2cCancellationActionModal({
                   onChange={(e) => setConfirmationRemark(e.target.value)}
                   placeholder="e.g. Ticket cancelled in LG CRM portal under Ref #LG-98412..."
                   rows={2}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500"
                   required
                 />
               </div>
               <div>
-                <label className="text-[11px] font-semibold text-slate-400 block mb-1">
+                <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
                   External CRM Reference / Ticket No. (Optional)
                 </label>
                 <input
@@ -177,17 +177,17 @@ export default function D2cCancellationActionModal({
                   value={crmReference}
                   onChange={(e) => setCrmReference(e.target.value)}
                   placeholder="e.g. CRM-LG-CAN-2026-001"
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 font-mono"
                 />
               </div>
-              <label className="flex items-start gap-2 p-2.5 rounded-lg bg-slate-800/40 border border-slate-700/60 cursor-pointer select-none">
+              <label className="flex items-start gap-2 p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={verifiedCrmCheck}
                   onChange={(e) => setVerifiedCrmCheck(e.target.checked)}
                   className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 mt-0.5"
                 />
-                <span className="text-[11px] text-slate-300 leading-snug">
+                <span className="text-[11px] text-slate-700 dark:text-slate-300 leading-snug">
                   I certify that I have verified and manually executed the cancellation in the actual CRM portal for inquiry <strong>{job.inquiryCode}</strong>.
                 </span>
               </label>
