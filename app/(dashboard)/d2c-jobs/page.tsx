@@ -68,37 +68,59 @@ function D2cJobsContent() {
   const [jobs, setJobs] = useState<D2cJob[]>([]);
 
   // Memoized active / pending jobs (strictly excludes COMPLETED, CANCELLED, and active cancellation tickets)
+  // Enterprise Priority Ranking: High Priority jobs are always ranked at the top
   const pendingJobs = useMemo(
     () =>
-      jobs.filter(
-        (j) =>
-          j.status !== 'COMPLETED' &&
-          j.status !== 'CANCELLED' &&
-          (!j.cancellationStatus || j.cancellationStatus === 'NONE'),
-      ),
+      jobs
+        .filter(
+          (j) =>
+            j.status !== 'COMPLETED' &&
+            j.status !== 'CANCELLED' &&
+            (!j.cancellationStatus || j.cancellationStatus === 'NONE'),
+        )
+        .sort((a, b) => {
+          const aHigh = a.isHighPriority ? 1 : 0;
+          const bHigh = b.isHighPriority ? 1 : 0;
+          if (bHigh !== aHigh) return bHigh - aHigh;
+          return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+        }),
     [jobs],
   );
 
   // Memoized unassigned and currently assigned leads (excluding cancellations)
   const unassignedLeads = useMemo(
     () =>
-      jobs.filter(
-        (j) =>
-          j.status === 'PENDING_ASSIGNMENT' &&
-          (!j.cancellationStatus || j.cancellationStatus === 'NONE'),
-      ),
+      jobs
+        .filter(
+          (j) =>
+            j.status === 'PENDING_ASSIGNMENT' &&
+            (!j.cancellationStatus || j.cancellationStatus === 'NONE'),
+        )
+        .sort((a, b) => {
+          const aHigh = a.isHighPriority ? 1 : 0;
+          const bHigh = b.isHighPriority ? 1 : 0;
+          if (bHigh !== aHigh) return bHigh - aHigh;
+          return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+        }),
     [jobs],
   );
 
   const assignedLeads = useMemo(
     () =>
-      jobs.filter(
-        (j) =>
-          j.status !== 'PENDING_ASSIGNMENT' &&
-          j.status !== 'COMPLETED' &&
-          j.status !== 'CANCELLED' &&
-          (!j.cancellationStatus || j.cancellationStatus === 'NONE'),
-      ),
+      jobs
+        .filter(
+          (j) =>
+            j.status !== 'PENDING_ASSIGNMENT' &&
+            j.status !== 'COMPLETED' &&
+            j.status !== 'CANCELLED' &&
+            (!j.cancellationStatus || j.cancellationStatus === 'NONE'),
+        )
+        .sort((a, b) => {
+          const aHigh = a.isHighPriority ? 1 : 0;
+          const bHigh = b.isHighPriority ? 1 : 0;
+          if (bHigh !== aHigh) return bHigh - aHigh;
+          return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+        }),
     [jobs],
   );
   const [loadingJobs, setLoadingJobs] = useState(false);

@@ -27,6 +27,7 @@ import {
   Star,
   ArrowRight,
   ShieldAlert,
+  RotateCcw,
 } from 'lucide-react';
 import { D2cApi, EligibleTechnician } from '@/lib/d2c-api';
 
@@ -38,6 +39,38 @@ interface D2cCreateJobModalProps {
 
 type WizardStep = 1 | 2 | 3 | 4;
 
+const DEFAULT_INITIAL_REMARK = 'Customer reported standard service/repair request via brand portal.';
+
+const getDefaultFormData = () => ({
+  // Step 1: Inquiry Details
+  brandName: 'LG',
+  inquiryCode: '',
+  initialRemark: DEFAULT_INITIAL_REMARK,
+
+  // Step 2: Customer & Location
+  customerName: '',
+  customerPhone: '',
+  alternatePhone: '',
+  city: 'Ahmedabad',
+  serviceAddress: '',
+  pinCode: '',
+
+  // Step 3: Appliance & Schedule
+  applianceCategory: 'Television',
+  modelNumber: '',
+  serialNumber: '',
+  warrantyType: 'IN_WARRANTY',
+  reportedFault: '',
+  appointmentDate: new Date().toISOString().split('T')[0],
+  timeSlot: '10:00 AM - 01:00 PM',
+
+  // Step 4: Assignment & Priority
+  isHighPriority: false,
+  priorityReason: '',
+  assignmentMode: 'UNASSIGNED' as 'IMMEDIATE' | 'UNASSIGNED',
+  assignedTechnicianId: '',
+});
+
 export default function D2cCreateJobModal({
   isOpen,
   onClose,
@@ -46,36 +79,8 @@ export default function D2cCreateJobModal({
   // Wizard Navigation Step
   const [currentStep, setCurrentStep] = useState<WizardStep>(1);
 
-  // Form State
-  const [formData, setFormData] = useState({
-    // Step 1: Inquiry Details
-    brandName: 'LG',
-    inquiryCode: '',
-    initialRemark: '',
-
-    // Step 2: Customer & Location
-    customerName: '',
-    customerPhone: '',
-    alternatePhone: '',
-    city: 'Ahmedabad',
-    serviceAddress: '',
-    pinCode: '',
-
-    // Step 3: Appliance & Schedule
-    applianceCategory: 'Air Conditioner',
-    modelNumber: '',
-    serialNumber: '',
-    warrantyType: 'IN_WARRANTY',
-    reportedFault: '',
-    appointmentDate: new Date().toISOString().split('T')[0],
-    timeSlot: '10:00 AM - 01:00 PM',
-
-    // Step 4: Assignment & Priority
-    isHighPriority: false,
-    priorityReason: '',
-    assignmentMode: 'IMMEDIATE' as 'IMMEDIATE' | 'UNASSIGNED',
-    assignedTechnicianId: '',
-  });
+  // Form State initialized with authoritative defaults
+  const [formData, setFormData] = useState(getDefaultFormData);
 
   // Validation & Server State
   const [checkingCode, setCheckingCode] = useState(false);
@@ -292,6 +297,14 @@ export default function D2cCreateJobModal({
     }
   };
 
+  const handleResetForm = () => {
+    setFormData(getDefaultFormData());
+    setCurrentStep(1);
+    setStepError(null);
+    setCodeConflict(null);
+    setCodeValid(false);
+  };
+
   // Final Form Submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -331,6 +344,7 @@ export default function D2cCreateJobModal({
 
       if (res.success && res.data) {
         onSuccess(res.data.id);
+        handleResetForm();
         onClose();
       }
     } catch (err: any) {
@@ -397,13 +411,24 @@ export default function D2cCreateJobModal({
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleResetForm}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition cursor-pointer"
+              title="Clear draft and reset all fields to default"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Reset Draft
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* ─── 2. TOP STEPPER PROGRESS BAR ──────────────────────────────────── */}
@@ -953,9 +978,6 @@ export default function D2cCreateJobModal({
                         <span className="text-xs font-bold text-slate-900 dark:text-white">
                           Assign Immediately
                         </span>
-                        <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-600">
-                          Recommended
-                        </span>
                       </div>
                       <p className="text-[11px] text-slate-500 dark:text-slate-400">
                         Dispatch directly to an active field technician.
@@ -980,6 +1002,9 @@ export default function D2cCreateJobModal({
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-xs font-bold text-slate-900 dark:text-white">
                           Keep Unassigned
+                        </span>
+                        <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-600">
+                          Default
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-500 dark:text-slate-400">
