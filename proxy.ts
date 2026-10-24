@@ -38,6 +38,8 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/api/auth/login') ||
     pathname.startsWith('/api/auth/request-otp') ||
     pathname.startsWith('/api/d2c/documents') ||
+    pathname.startsWith('/api/d2c/proxy/documents') ||
+    pathname.includes('/download') ||
     pathname.includes('.')
   ) {
     return NextResponse.next();

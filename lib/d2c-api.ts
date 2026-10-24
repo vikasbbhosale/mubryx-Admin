@@ -469,13 +469,48 @@ export const D2cApi = {
     return res.json();
   },
 
-  downloadDocument(docId: string, fallbackName?: string) {
-    const link = document.createElement('a');
-    link.href = `/api/d2c/proxy/documents/${docId}/download`;
-    if (fallbackName) link.download = fallbackName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  async downloadDocument(docId: string, fallbackName?: string) {
+    try {
+      const res = await fetch(`/api/d2c/proxy/documents/${docId}/download`, {
+        cache: 'no-store',
+      });
+      if (!res.ok) {
+        let errMessage = `HTTP ${res.status}`;
+        try {
+          const json = await res.json();
+          errMessage = json.message || json.error || errMessage;
+        } catch {}
+        alert(`Failed to download document: ${errMessage}`);
+        return;
+      }
+
+      const blob = await res.blob();
+      if (blob.size === 0) {
+        alert('Downloaded document is empty (0 bytes).');
+        return;
+      }
+
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+
+      let filename = fallbackName;
+      const disposition = res.headers.get('content-disposition');
+      if (disposition && disposition.includes('filename=')) {
+        const matches = disposition.match(/filename="?([^";]+)"?/);
+        if (matches && matches[1]) {
+          filename = matches[1];
+        }
+      }
+      if (filename) link.download = filename;
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => window.URL.revokeObjectURL(blobUrl), 10000);
+    } catch (err: any) {
+      alert(`Download error: ${err?.message || 'Network error'}`);
+    }
   },
 };
 
