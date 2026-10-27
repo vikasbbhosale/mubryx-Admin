@@ -1175,37 +1175,51 @@ function D2cJobsContent() {
                       </button>
 
                       {c.cancellationStatus === 'PENDING_APPROVAL' && c.approvalRequests?.[0] && (
-                        <button
-                          onClick={() =>
-                            setApprovalModalState({
-                              isOpen: true,
-                              request: c.approvalRequests[0],
-                              actionType: 'APPROVE',
-                            })
-                          }
-                          className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1 cursor-pointer transition shadow-xs"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Approve Request
-                        </button>
+                        <>
+                          <button
+                            onClick={() =>
+                              setApprovalModalState({
+                                isOpen: true,
+                                request: c.approvalRequests[0],
+                                actionType: 'APPROVE',
+                              })
+                            }
+                            className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1 cursor-pointer transition shadow-xs"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Approve Request
+                          </button>
+                          <button
+                            onClick={() =>
+                              setApprovalModalState({
+                                isOpen: true,
+                                request: c.approvalRequests[0],
+                                actionType: 'REJECT',
+                              })
+                            }
+                            className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-1 cursor-pointer transition shadow-xs"
+                          >
+                            <XCircle className="w-3.5 h-3.5" /> Reject
+                          </button>
+                        </>
                       )}
 
                       {c.cancellationStatus !== 'CRM_CONFIRMED' && (
-                        <>
-                          <button
-                            onClick={() => setRevokeJob(c)}
-                            className="px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-900/60 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition shadow-xs"
-                            title="Customer agrees to reschedule service"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" /> Revoke & Reschedule
-                          </button>
+                        <button
+                          onClick={() => setRevokeJob(c)}
+                          className="px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-900/60 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition shadow-xs"
+                          title="Customer agrees to reschedule service"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" /> Revoke & Reschedule
+                        </button>
+                      )}
 
-                          <button
-                            onClick={() => setConfirmCrmJob(c)}
-                            className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-1 cursor-pointer transition shadow-xs"
-                          >
-                            Confirm CRM Cancellation
-                          </button>
-                        </>
+                      {c.cancellationStatus !== 'PENDING_APPROVAL' && c.cancellationStatus !== 'CRM_CONFIRMED' && (
+                        <button
+                          onClick={() => setConfirmCrmJob(c)}
+                          className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-1 cursor-pointer transition shadow-xs"
+                        >
+                          Confirm CRM Cancellation
+                        </button>
                       )}
                       {c.cancellationStatus === 'CRM_CONFIRMED' && (
                         <div className="flex items-center gap-2">

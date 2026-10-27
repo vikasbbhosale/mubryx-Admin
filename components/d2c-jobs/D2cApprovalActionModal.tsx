@@ -75,11 +75,6 @@ export default function D2cApprovalActionModal({
     e.preventDefault();
     setError(null);
 
-    if (!isApprove && !reviewReason.trim()) {
-      setError('Mandatory rejection reason is required.');
-      return;
-    }
-
     try {
       setSubmitting(true);
       if (isApprove) {
@@ -89,7 +84,10 @@ export default function D2cApprovalActionModal({
           replacementTechId ? replacementTechId : undefined,
         );
       } else {
-        await D2cApi.rejectRequest(request.id, reviewReason.trim());
+        const defaultReason = isTransfer
+          ? 'Transfer request declined by operations admin. Assigned back to technician.'
+          : 'Request declined by operations admin.';
+        await D2cApi.rejectRequest(request.id, reviewReason.trim() || defaultReason);
       }
       onSuccess();
       onClose();
@@ -215,15 +213,14 @@ export default function D2cApprovalActionModal({
           ) : (
             <div>
               <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
-                Mandatory Rejection Reason <span className="text-rose-500">*</span>
+                Rejection Reason (Optional)
               </label>
               <textarea
                 value={reviewReason}
                 onChange={(e) => setReviewReason(e.target.value)}
-                placeholder="Specify why this request cannot be approved..."
+                placeholder="Specify why this request cannot be approved (or leave blank to use default)..."
                 rows={2}
                 className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500"
-                required
               />
             </div>
           )}
@@ -238,7 +235,7 @@ export default function D2cApprovalActionModal({
             </button>
             <button
               type="submit"
-              disabled={submitting || (!isApprove && !reviewReason.trim())}
+              disabled={submitting}
               className={`px-4 py-1.5 rounded-lg font-bold text-white flex items-center gap-1.5 cursor-pointer shadow-xs transition ${
                 isApprove
                   ? 'bg-emerald-600 hover:bg-emerald-500'
