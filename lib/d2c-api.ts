@@ -269,9 +269,10 @@ export const D2cApi = {
     return metrics;
   },
 
-  async checkInquiryCode(code: string): Promise<{ exists: boolean; canonical: string; job?: any }> {
+    async checkInquiryCode(code: string): Promise<{ exists: boolean; canonical: string; job?: any }> {
     const res = await fetch(`/api/d2c/proxy/jobs/check-inquiry?code=${encodeURIComponent(code)}`);
-    return res.json();
+    const json = await res.json();
+    return (json?.data !== undefined ? json.data : json) as { exists: boolean; canonical: string; job?: any };
   },
 
   async getJobs(params: Record<string, string | number | undefined>): Promise<{ items: D2cJob[]; total: number; totalPages: number }> {
@@ -337,6 +338,32 @@ export const D2cApi = {
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json?.message || 'Failed to assign technician.');
+    clearClientCache();
+    return json;
+  },
+
+  
+  async unassignJob(jobId: string, unassignReason?: string): Promise<any> {
+    const res = await fetch(`/api/d2c/proxy/jobs/${jobId}/unassign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ unassignReason }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.message || 'Failed to unassign job.');
+    clearClientCache();
+    return json;
+  },
+
+  async deleteJob(jobId: string, reason?: string): Promise<any> {
+    const res = await fetch(
+      `/api/d2c/proxy/jobs/${jobId}${reason ? `?reason=${encodeURIComponent(reason)}` : ''}`,
+      {
+        method: 'DELETE',
+      },
+    );
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.message || 'Failed to delete job.');
     clearClientCache();
     return json;
   },

@@ -9,6 +9,8 @@ import {
   Filter,
   RefreshCw,
   UserCheck,
+  UserX,
+  Trash2,
   Clock,
   AlertTriangle,
   ArrowRightLeft,
@@ -172,6 +174,28 @@ function D2cJobsContent() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  // jobToUnassign removed - handled in Reassign modal
+  const [jobToDelete, setJobToDelete] = useState<D2cJob | null>(null);
+  const [actionReason, setActionReason] = useState('');
+  const [isActionSubmitting, setIsActionSubmitting] = useState(false);
+
+  
+
+  const handleConfirmDelete = async () => {
+    if (!jobToDelete) return;
+    try {
+      setIsActionSubmitting(true);
+      await D2cApi.deleteJob(jobToDelete.id, actionReason.trim() || undefined);
+      setJobToDelete(null);
+      setActionReason('');
+      setIsDrawerOpen(false);
+      await loadWorkspaceBatch(true);
+    } catch (err: any) {
+      alert(err?.message || 'Failed to delete job.');
+    } finally {
+      setIsActionSubmitting(false);
+    }
+  };
   const [isReassignMode, setIsReassignMode] = useState(false);
   const [approvalModalState, setApprovalModalState] = useState<{
     isOpen: boolean;
@@ -702,6 +726,13 @@ function D2cJobsContent() {
                               >
                                 <Eye className="w-4 h-4" />
                               </button>
+                              <button
+                                onClick={() => setJobToDelete(job)}
+                                className="p-1 rounded text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer"
+                                title="Delete Job"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -841,6 +872,7 @@ function D2cJobsContent() {
                       >
                         Reassign
                       </button>
+                      
                     </div>
                   ))
                 )}
@@ -1356,6 +1388,62 @@ function D2cJobsContent() {
         onClose={() => setIsCreateModalOpen(false)}
         onSuccess={() => loadWorkspaceBatch(true)}
       />
+
+      {/* Delete Job Confirmation Modal */}
+      {jobToDelete && (
+        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-xs" onClick={() => !isActionSubmitting && setJobToDelete(null)} />
+          <div className="relative w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-5 z-10 animate-in zoom-in-95 duration-150 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">Delete D2C Job</h3>
+                <p className="text-xs text-slate-500">Ticket: {jobToDelete.inquiryCode || jobToDelete.jobTicketNumber}</p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/40 rounded-xl text-xs text-rose-800 dark:text-rose-300">
+              <p className="font-bold">Permanent Deletion Warning</p>
+              <p className="text-[11px] mt-1 text-rose-700 dark:text-rose-400">
+                Customer: <span className="font-semibold">{jobToDelete.customerName}</span> ({jobToDelete.city}) • Appliance: <span className="font-semibold">{jobToDelete.brandName} {jobToDelete.applianceCategory}</span>.
+                All audit logs and documents will be permanently erased.
+                {jobToDelete.assignedTechnician ? ' The assigned technician will be notified in real time.' : ''}
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Deletion Reason (Optional)</label>
+              <input
+                type="text"
+                value={actionReason}
+                onChange={(e) => setActionReason(e.target.value)}
+                placeholder="e.g. Duplicate order, invalid CRM ticket..."
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 text-xs"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => { setJobToDelete(null); setActionReason(''); }}
+                disabled={isActionSubmitting}
+                className="px-3.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold cursor-pointer text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                disabled={isActionSubmitting}
+                className="px-4 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold flex items-center gap-1.5 cursor-pointer text-xs shadow-xs transition disabled:opacity-50"
+              >
+                {isActionSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                Delete Permanently
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Assign / Reassign Modal */}
       <D2cAssignModal

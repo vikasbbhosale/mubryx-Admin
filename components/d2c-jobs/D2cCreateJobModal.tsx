@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   X,
   PlusCircle,
@@ -88,6 +88,7 @@ export default function D2cCreateJobModal({
   const [codeValid, setCodeValid] = useState(false);
   const [stepError, setStepError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
 
   // Technician Search Engine State
   const [eligibleTechs, setEligibleTechs] = useState<EligibleTechnician[]>([]);
@@ -310,12 +311,23 @@ export default function D2cCreateJobModal({
     e.preventDefault();
     setStepError(null);
 
+    if (isSubmittingRef.current || submitting) {
+      return;
+    }
+
     if (codeConflict) {
       setStepError('Cannot register: This inquiry code is already registered in the system.');
       return;
     }
 
+    // Direct Assign validation: If admin selected Assign Immediately, ensure technician is selected
+    if (formData.assignmentMode === 'IMMEDIATE' && !formData.assignedTechnicianId) {
+      setStepError('Please select an active technician to assign immediately, or select "Keep Unassigned".');
+      return;
+    }
+
     try {
+      isSubmittingRef.current = true;
       setSubmitting(true);
       const res = await D2cApi.createJob({
         brandName: formData.brandName,
@@ -350,6 +362,7 @@ export default function D2cCreateJobModal({
     } catch (err: any) {
       setStepError(err?.message || 'Failed to register D2C job.');
     } finally {
+      isSubmittingRef.current = false;
       setSubmitting(false);
     }
   };
