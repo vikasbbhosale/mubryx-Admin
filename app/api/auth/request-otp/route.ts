@@ -7,7 +7,7 @@ export async function POST(req: NextRequest) {
     const rawPhone = String(body?.phone || '').trim();
 
     // Enforce strict regex validation FIRST so injection payloads are not stripped into valid numbers
-    if (!/^(\+?91[\-\s]?)?[6-9]\d{9}$/.test(rawPhone)) {
+    if (!/^(\+?91[\-\s]?)?[6-9][\d\s\-]{8,12}\d$/.test(rawPhone)) {
       return NextResponse.json(
         { message: 'Please enter a valid 10-digit authorized Indian mobile number.' },
         { status: 400 },

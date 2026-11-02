@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
     const rawPin = body?.adminPin ? String(body.adminPin).trim() : undefined;
 
     // Validate phone number format strictly before any transformation
-    if (!/^(\+?91[\-\s]?)?[6-9]\d{9}$/.test(rawPhone)) {
+    if (!/^(\+?91[\-\s]?)?[6-9][\d\s\-]{8,12}\d$/.test(rawPhone)) {
       return NextResponse.json(
         { message: 'Valid 10-digit administrator mobile number is required.' },
         { status: 400 },
