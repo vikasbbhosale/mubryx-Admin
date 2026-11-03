@@ -529,7 +529,15 @@ export const D2cApi = {
           filename = matches[1];
         }
       }
-      if (filename) link.download = filename;
+
+      // Hardened filename sanitizer - prevent "null", "undefined", or blank filenames
+      if (!filename || filename === 'null' || filename === 'undefined') {
+        const contentType = res.headers.get('content-type') || '';
+        const ext = contentType.includes('pdf') ? 'pdf' : 'jpg';
+        filename = `document_${docId}.${ext}`;
+      }
+
+      link.download = filename;
 
       document.body.appendChild(link);
       link.click();

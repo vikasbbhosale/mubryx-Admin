@@ -25,6 +25,19 @@ export async function GET(
       }
     }
 
+    // Intelligent prod fallback: If local dev server returned 404, check live production server
+    if (!backendRes.ok) {
+      try {
+        const prodUrl = `https://api.mubryx.com/api/v1/d2c/documents/${id}/download`;
+        const prodRes = await fetch(prodUrl, { method: 'GET', cache: 'no-store' });
+        if (prodRes.ok) {
+          backendRes = prodRes;
+        }
+      } catch {
+        // Fallback suppressed
+      }
+    }
+
     if (!backendRes.ok) {
       const errText = await backendRes.text();
       return NextResponse.json(
@@ -38,8 +51,11 @@ export async function GET(
 
     const contentType =
       backendRes.headers.get('content-type') || 'application/octet-stream';
-    const contentDisposition =
-      backendRes.headers.get('content-disposition') || `attachment; filename="${id}"`;
+    let contentDisposition = backendRes.headers.get('content-disposition');
+    if (!contentDisposition || !contentDisposition.includes('filename=')) {
+      const ext = contentType.includes('pdf') ? 'pdf' : 'jpg';
+      contentDisposition = `attachment; filename="document_${id}.${ext}"`;
+    }
 
     return new NextResponse(buffer, {
       status: 200,
@@ -47,6 +63,7 @@ export async function GET(
         'Content-Type': contentType,
         'Content-Disposition': contentDisposition,
         'Content-Length': buffer.length.toString(),
+        'Access-Control-Expose-Headers': 'Content-Disposition, Content-Length',
       },
     });
   } catch (error: any) {
