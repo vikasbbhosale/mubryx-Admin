@@ -521,19 +521,25 @@ export const D2cApi = {
       const link = document.createElement('a');
       link.href = blobUrl;
 
-      let filename = fallbackName;
+      let filename = '';
       const disposition = res.headers.get('content-disposition');
       if (disposition && disposition.includes('filename=')) {
         const matches = disposition.match(/filename="?([^";]+)"?/);
         if (matches && matches[1]) {
-          filename = matches[1];
+          filename = matches[1].trim();
         }
       }
 
-      // Hardened filename sanitizer - prevent "null", "undefined", or blank filenames
-      if (!filename || filename === 'null' || filename === 'undefined') {
+      // Hardened fallback filename sanitizer - prevent "null", "undefined", or blank filenames
+      if (!filename || filename === 'null' || filename === 'undefined' || filename.startsWith('null.')) {
+        if (fallbackName && fallbackName !== 'null' && !fallbackName.startsWith('null.')) {
+          filename = fallbackName.trim();
+        }
+      }
+
+      if (!filename || filename === 'null' || filename === 'undefined' || filename.startsWith('null.')) {
         const contentType = res.headers.get('content-type') || '';
-        const ext = contentType.includes('pdf') ? 'pdf' : 'jpg';
+        const ext = contentType.includes('pdf') ? 'pdf' : contentType.includes('png') ? 'png' : 'jpg';
         filename = `document_${docId}.${ext}`;
       }
 
@@ -561,10 +567,8 @@ export function formatStandardDocFilename(
   typeOrDoc: string,
   mimeTypeOrExt?: string,
 ): string {
-  const safeCustomer = (customerName || 'Customer')
-    .trim()
-    .replace(/\s+/g, '_')
-    .replace(/[^a-zA-Z0-9_-]/g, '');
+  const rawCustomer = (!customerName || customerName === 'null' || customerName === 'undefined') ? 'Customer' : customerName.trim();
+  const safeCustomer = rawCustomer.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '') || 'Customer';
 
   const upper = (typeOrDoc || '').toUpperCase();
   let suffix = 'document';
